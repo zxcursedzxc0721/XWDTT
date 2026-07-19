@@ -1,0 +1,171 @@
+@font-face {
+  font-family: 'Geist';
+  font-weight: 500;
+  font-display: block;
+  src: url('/fonts/Geist-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist';
+  font-weight: 600;
+  font-display: block;
+  src: url('/fonts/Geist-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist';
+  font-weight: 700;
+  font-display: block;
+  src: url('/fonts/Geist-700.woff2') format('woff2');
+}
+
+:root {
+  --bg: #f5f5f7;
+  --bg-2: #ededf0;
+  --bg-3: #e2e2e6;
+  --surface: #ffffff;
+  --border: #d0d0d4;
+  --border-2: #e4e4e6;
+  --text: #1a1a1f;
+  --text-2: #4a4a55;
+  --text-3: #6e6e80;
+  --text-4: #9a9aaa;
+  --accent: #3a3a42;
+  --accent-fg: #ffffff;
+  --seg-bg: #e0e0e4;
+  --seg-text: #4a4a55;
+  --input-border: #c0c0c4;
+  --input-bg: #ffffff;
+  --sidebar-from: #4a4a52;
+  --sidebar-to: #1a1a20;
+  --sidebar-btn-active: #000000;
+  --shadow: 0 8px 40px rgba(0,0,0,0.1);
+  --overlay-bg: rgba(0,0,0,0.25);
+}
+
+/* ─── Dark base — Graphite silver (no purple) ─── */
+[data-theme="dark"] {
+  --bg: #18181d;
+  --bg-2: #1f1f26;
+  --bg-3: #28282f;
+  --surface: #222228;
+  --border: #333338;
+  --border-2: #2a2a30;
+  --text: #eaeaef;
+  --text-2: #b5b5c0;
+  --text-3: #80809a;
+  --text-4: #5a5a62;
+  --accent: #a0a0a8;
+  --accent-dim: rgba(160,160,168,0.25);
+  --accent-fg: #18181d;
+  --seg-bg: #2c2c32;
+  --seg-text: #b5b5c0;
+  --input-border: #404048;
+  --input-bg: #1f1f26;
+  --sidebar-from: #505058;
+  --sidebar-to: #1c1c22;
+  --sidebar-text: #eaeaef;
+  --sidebar-btn-active: #000000;
+  --shadow: 0 8px 40px rgba(0,0,0,0.45);
+  --overlay-bg: rgba(0,0,0,0.55);
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  text-align: left;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Geist', system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="dark"] #root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+body {
+  margin: 0;
+  transition: background 0.3s ease, color 0.3s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}

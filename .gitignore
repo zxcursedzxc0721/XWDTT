@@ -1,0 +1,41 @@
+# Build output
+/build/bin/
+
+# Frontend
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+
+# Go
+*.exe
+*.dll
+!assets/wintun.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+
+# Wails build artifacts
+*.syso
+*.rc
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment / secrets
+.env
+.env.*
+*.local
+
+# Logs
+*.log
