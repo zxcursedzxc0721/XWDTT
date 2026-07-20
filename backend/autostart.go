@@ -17,9 +17,52 @@ func setAutoStart(v bool) error {
 		return setAutoStartLinux(v)
 	case "windows":
 		return setAutoStartWindows(v)
+	case "darwin":
+		return setAutoStartDarwin(v)
 	default:
 		return fmt.Errorf("unsupported: %s", runtime.GOOS)
 	}
+}
+
+const launchAgentLabel = "com.pwdtt.autostart"
+
+func setAutoStartDarwin(v bool) error {
+	dir := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents")
+	path := filepath.Join(dir, launchAgentLabel+".plist")
+	if !v {
+		os.Remove(path)
+		return nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	// .app: .../PWDTT.app/Contents/MacOS/pwdtt → запускаем через open,
+	// чтобы поднялся именно бандл, а не голый бинарник
+	appPath := exe
+	if idx := strings.Index(exe, ".app/Contents/MacOS/"); idx != -1 {
+		appPath = exe[:idx+len(".app")]
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	content := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>%s</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/open</string>
+		<string>%s</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+</dict>
+</plist>
+`, launchAgentLabel, appPath)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func setAutoStartLinux(v bool) error {
