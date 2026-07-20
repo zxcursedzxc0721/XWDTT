@@ -63,11 +63,38 @@ func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
 
 	// Ищем ссылку на скачивание для текущей ОС
 	var downloadURL string
-	osName := runtime.GOOS // "linux" или "windows"
+	osName := runtime.GOOS // "linux", "windows" или "darwin"
+	// Возможные синонимы ОС в имени ассета
+	osAliases := []string{osName}
+	if osName == "darwin" {
+		osAliases = append(osAliases, "macos", "mac", "osx")
+	}
+	// Подходящие маркеры архитектуры (darwin собирается universal)
+	archMarkers := []string{runtime.GOARCH}
+	if osName == "darwin" {
+		archMarkers = append(archMarkers, "universal", "arm64", "amd64")
+	} else {
+		archMarkers = append(archMarkers, "amd64", "x86_64")
+	}
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
-		if strings.Contains(name, osName) && strings.Contains(name, "amd64") {
-			downloadURL = asset.BrowserDownloadURL
+		osOK := false
+		for _, a := range osAliases {
+			if strings.Contains(name, a) {
+				osOK = true
+				break
+			}
+		}
+		if !osOK {
+			continue
+		}
+		for _, m := range archMarkers {
+			if strings.Contains(name, m) {
+				downloadURL = asset.BrowserDownloadURL
+				break
+			}
+		}
+		if downloadURL != "" {
 			break
 		}
 	}

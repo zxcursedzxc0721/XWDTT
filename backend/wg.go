@@ -33,10 +33,13 @@ type WG struct {
 	activeRoutes   []string
 	activeRoutesMu sync.Mutex
 
-	// Windows-specific
+	// Windows/macOS userspace-specific
 	activeDevice        *device.Device
 	activeTun           tun.Device
 	activeExcludeRoutes []string
+
+	// macOS-specific: соединение с привилегированным helper-процессом
+	helperConn *net.UnixConn
 }
 
 type wgLogFunc func(msg string)
@@ -50,6 +53,8 @@ func (w *WG) Apply(conf string, turnIPs []string, logf wgLogFunc) error {
 		return w.applyLinux(conf, turnIPs, logf)
 	case "windows":
 		return w.applyWindows(conf, turnIPs, logf)
+	case "darwin":
+		return w.applyDarwin(conf, turnIPs, logf)
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
@@ -61,6 +66,8 @@ func (w *WG) Teardown() {
 		w.teardownLinux()
 	case "windows":
 		w.teardownWindows()
+	case "darwin":
+		w.teardownDarwin()
 	}
 }
 
