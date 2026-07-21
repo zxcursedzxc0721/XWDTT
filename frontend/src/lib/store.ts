@@ -39,7 +39,9 @@ export const serverStore = {
 export const settingsStore = {
   get: (): AppSettings => {
     const saved = parse<Partial<AppSettings>>(SETTINGS_KEY, {});
-    return { ...DEFAULT_SETTINGS, ...saved };
+    const merged = { ...DEFAULT_SETTINGS, ...saved };
+    if (!merged.obfsAccepted) merged.obfsMode = 'audio';
+    return merged;
   },
   save: (settings: AppSettings) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)),
 };

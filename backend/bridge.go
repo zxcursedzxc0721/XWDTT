@@ -29,14 +29,23 @@ func (b *Bridge) Connect(params ConnectParams) error {
 	b.mu.Lock()
 	if b.running {
 		b.mu.Unlock()
+		log.Printf("[BRIDGE] Connect rejected: already running")
 		return fmt.Errorf("already running")
 	}
 	// Сразу помечаем как running чтобы заблокировать параллельные вызовы
 	b.running = true
 	b.mu.Unlock()
 
+	// resetRunning сбрасывает флаг при любой ошибке до запуска forwardEvents
+	resetRunning := func() {
+		b.mu.Lock()
+		b.running = false
+		b.mu.Unlock()
+	}
+
 	hashes := params.Hashes
 	if len(hashes) == 0 {
+		resetRunning()
 		return fmt.Errorf("нет хешей VK")
 	}
 
@@ -64,9 +73,8 @@ func (b *Bridge) Connect(params ConnectParams) error {
 	c := core.New(cfg)
 	events, err := c.Start()
 	if err != nil {
-		b.mu.Lock()
-		b.running = false
-		b.mu.Unlock()
+		log.Printf("[BRIDGE] core start failed: %v", err)
+		resetRunning()
 		return fmt.Errorf("core start: %w", err)
 	}
 
@@ -150,7 +158,7 @@ func (b *Bridge) forwardEvents(events <-chan core.Event) {
 					}
 					b.mu.Unlock()
 				}
-				if err := wg.Apply(ev.Data, nil, wgLogf); err != nil {
+				if err := wg.Apply(ev.Data, ev.TurnIPs, wgLogf); err != nil {
 					b.onEvent("error", fmt.Sprintf("[WG] Ошибка: %v", err))
 				} else {
 					b.onEvent("log", "INFO", "[WG] Конфиг применён, туннель активен")

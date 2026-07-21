@@ -1,3 +1,5 @@
+//go:build linux
+
 package backend
 
 import "os/exec"

@@ -25,6 +25,13 @@ jobs:
           name: pwdtt-windows-amd64
           path: dist
 
+      - name: Download macOS artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build.yml
+          name: pwdtt-macos
+          path: dist
+
       - name: List dist contents
         run: find dist/ -maxdepth 3 -ls
 
@@ -35,25 +42,17 @@ jobs:
           files: |
             dist/pwdtt-linux-amd64
             dist/pwdtt-windows-amd64.exe
+            dist/PWDTT-macos.zip
           body: |
-            ## PWDTT v1.5.0
+            ## PWDTT v1.5.1
 
-            **Новое:**
-            - Сбор отчёта об ошибках — информация о системе и логах копируются в буфер для отправки в Issue
-            - Проверка обновлений — автоматическая проверка актуальной версии при запуске
-            - Поддержка ссылок `qwdtt://` — быстрое добавление серверов по ссылке
-            - Режимы обфускации — выбор между audio и video в настройках
 
-            **Улучшения:**
-            - Полная переработка интерфейса для удобства использования
-            - Улучшена работа автозапуска на Linux
-            - Исправлена запись логов в файлы
-            - Улучшена маршрутизация на Windows
-
-            **Удалено:**
-            - Деплой — вырезан (совместимость с оригинальным wdtt сохранена)
-            - Системный трей — удалён из-за некорректной работы
+            - Парсинг ссылок изза чего не работали старвые сервера.
+            - Добавлено информация о подключении текущий ip и задержка. 
+            - Реализация WG, AutoStart, Update  для MacOS (by @alextixru)
+            
 
             **Platforms:**
             - Linux x86_64
             - Windows x86_64
+            - macOS (Universal: Intel + Apple Silicon)

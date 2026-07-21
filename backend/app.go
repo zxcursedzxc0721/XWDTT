@@ -3,10 +3,10 @@ package backend
 import (
 	"context"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wails "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const Version = "1.5.0"
+const Version = "1.5.1"
 
 // App — главный объект приложения.
 // Wails привязывает его методы к frontend через Bind().
@@ -98,10 +98,20 @@ func (a *App) GetObfsMode() string {
 	return a.store.LoadSettings().ObfsMode
 }
 
-func (a *App) SetObfsMode(mode string) {
+func (a *App) SetObfsMode(mode string) error {
 	settings := a.store.LoadSettings()
 	settings.ObfsMode = mode
-	a.store.SaveSettings(settings)
+	return a.store.SaveSettings(settings)
+}
+
+func (a *App) GetObfsAccepted() bool {
+	return a.store.LoadSettings().ObfsAccepted
+}
+
+func (a *App) SetObfsAccepted(v bool) error {
+	settings := a.store.LoadSettings()
+	settings.ObfsAccepted = v
+	return a.store.SaveSettings(settings)
 }
 
 func (a *App) CheckUpdate() *UpdateInfo {
@@ -117,5 +127,5 @@ func (a *App) CheckUpdate() *UpdateInfo {
 // ═══════════════════════════════════════════════════
 
 func (a *App) onBridgeEvent(name string, args ...any) {
-	runtime.EventsEmit(a.ctx, name, args...)
+	wails.EventsEmit(a.ctx, name, args...)
 }

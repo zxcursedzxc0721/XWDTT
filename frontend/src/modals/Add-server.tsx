@@ -28,7 +28,14 @@ export default function AddServer({ onClose, onAdd }: Props) {
     setLink(raw);
     const parsed = parseWdttUrl(raw.trim());
     if (!parsed) return;
-    setIp(parsed.host);
+    // host может быть "IP:PORT" — разделяем
+    const lastColon = parsed.host.lastIndexOf(':');
+    if (lastColon > 0 && lastColon < parsed.host.length - 1) {
+      setIp(parsed.host.slice(0, lastColon));
+      setPort(parsed.host.slice(lastColon + 1));
+    } else {
+      setIp(parsed.host);
+    }
     setPassword(parsed.password);
     if (parsed.name !== 'Server') setName(parsed.name);
     if (parsed.hashes.length > 0) {

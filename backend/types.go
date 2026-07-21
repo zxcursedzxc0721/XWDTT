@@ -25,6 +25,7 @@ type ProfileData struct {
 
 // AppSettings — настройки приложения, хранятся в ~/.config/pwdtt/config.json.
 type AppSettings struct {
-	AutoStart bool   `json:"autoStart"` // автозапуск при старте системы
-	ObfsMode  string `json:"obfsMode"`  // audio/video
+	AutoStart    bool   `json:"autoStart"`    // автозапуск при старте системы
+	ObfsMode     string `json:"obfsMode"`     // audio/video
+	ObfsAccepted bool   `json:"obfsAccepted"` // пользователь принял предупреждение об обфускации
 }

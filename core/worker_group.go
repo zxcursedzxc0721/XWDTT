@@ -26,6 +26,7 @@ func WorkerGroup(
 	localPort string,
 	getConfig bool,
 	configCh chan<- string,
+	turnIPsCh chan<- []string,
 	workerIDs []int,
 	pauseFlag *int32,
 	deviceID, password string,
@@ -74,6 +75,41 @@ func WorkerGroup(
 	}
 
 	log.Printf("[ГРУППА #%d] Креды OK, TURN: %v, %d воркеров", groupID, creds.TurnURLs, len(workerIDs))
+
+	// Отправляем TURN IP для exclude routes (только первая группа)
+	if groupID == 1 && turnIPsCh != nil && len(creds.TurnURLs) > 0 {
+		var turnIPs []string
+		for _, url := range creds.TurnURLs {
+			host, _, err := net.SplitHostPort(url)
+			if err != nil {
+				host = url
+			}
+			if tp.Host != "" {
+				host = tp.Host
+			}
+			resolved, err := net.LookupIP(host)
+			if err != nil {
+				turnIPs = append(turnIPs, host)
+			} else {
+				for _, ip := range resolved {
+					turnIPs = append(turnIPs, ip.String())
+				}
+			}
+		}
+		// Дедупликация
+		seen := make(map[string]bool)
+		var unique []string
+		for _, ip := range turnIPs {
+			if !seen[ip] {
+				seen[ip] = true
+				unique = append(unique, ip)
+			}
+		}
+		select {
+		case turnIPsCh <- unique:
+		default:
+		}
+	}
 
 	var configRequestInFlight int32
 	var wg sync.WaitGroup

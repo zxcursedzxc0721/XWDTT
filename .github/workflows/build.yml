@@ -48,3 +48,33 @@ jobs:
         with:
           name: pwdtt-windows-amd64
           path: build/bin/pwdtt-windows-amd64.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build macOS
+        run: wails build -platform darwin/universal -o pwdtt-macos
+
+      - name: Zip macOS app
+        run: cd build/bin && zip -r PWDTT-macos.zip PWDTT.app
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwdtt-macos
+          path: build/bin/PWDTT-macos.zip

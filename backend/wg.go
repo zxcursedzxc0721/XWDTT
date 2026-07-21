@@ -37,6 +37,7 @@ type WG struct {
 	activeDevice        *device.Device
 	activeTun           tun.Device
 	activeExcludeRoutes []string
+	physGW              string // physical gateway saved during apply for restore on teardown
 
 	// macOS-specific: соединение с привилегированным helper-процессом
 	helperConn *net.UnixConn
@@ -284,9 +285,6 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 		fmt.Sscanf(mtuStr, "%d", &mtu)
 	}
 
-	// Cleanup any leftover wintun adapter from previous session
-	cleanupWintunAdapter()
-
 	// Create wintun TUN interface
 	logf(fmt.Sprintf("Создание TUN интерфейса %q (mtu=%d)", wgIface, mtu))
 	tunDev, err := tun.CreateTUN(wgIface, mtu)
@@ -314,32 +312,30 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 	}
 	logf("WireGuard устройство поднято")
 
-	// Set IP address with subnet mask
-	host, mask, _ := parseCIDR(addr)
-	if host != "" {
-		// Try with CIDR first
-		if err := runCmdWindows("netsh", "interface", "ip", "set", "address",
-			"name="+wgIface, "source=static", addr); err != nil {
-			// Fallback: try with separate host + mask
-			if err2 := runCmdWindows("netsh", "interface", "ip", "set", "address",
-				"name="+wgIface, "source=static", host, mask); err2 != nil {
-				logf(fmt.Sprintf("netsh set address failed: %v / %v", err, err2))
-			} else {
-				logf(fmt.Sprintf("IP установлен: %s/%s", host, mask))
-			}
-		} else {
-			logf(fmt.Sprintf("IP установлен: %s", addr))
+	// Set IP address on the interface
+	if err := runCmdWindows("netsh", "interface", "ip", "set", "address",
+		"name="+wgIface, "source=static", addr, "none"); err != nil {
+		host, mask, _ := parseCIDR(addr)
+		if host != "" {
+			_ = runCmdWindows("netsh", "interface", "ip", "set", "address",
+				"name="+wgIface, "source=static", host, mask)
 		}
 	}
 
-	// Set low metric on WG interface
+	// Set low metric on WG interface so it wins over physical default route
 	_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
 		"interface="+wgIface, "metric=1")
 
+	// Get physical gateway and raise its metric so WG takes priority
 	gw := defaultGatewayWindows()
 	logf(fmt.Sprintf("Default gateway: %s", gw))
+	if gw != "" {
+		// Save original metric for restore on teardown
+		w.physGW = gw
+		_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
+	}
 
-	// Exclude routes — VK IPs, DNS, etc go via physical gateway (high metric)
+	// Exclude routes — VK IPs, DNS, etc go via physical gateway (bypass tunnel)
 	var excludes []string
 	if gw != "" {
 		for _, ip := range turnIPs {
@@ -351,29 +347,16 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 			if err != nil {
 				continue
 			}
-			if err := runCmdWindows("route", "add", ip, "mask", mask, gw, "metric", "5"); err != nil {
-				logf(fmt.Sprintf("exclude route %s failed: %v", cidr, err))
-			}
+			_ = runCmdWindows("route", "add", ip, "mask", mask, gw)
 		}
-		// Raise metric on physical interface default route so WG takes priority
-		_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
-		logf(fmt.Sprintf("Exclude routes: %d, physical GW metric raised to 9999", len(excludes)))
 	}
 	w.activeExcludeRoutes = excludes
 
-	// Add AllowedIPs routes via WG interface — use netsh (accepts interface name)
+	// Add AllowedIPs routes via the WG interface
 	var tunnelRoutes []string
 	for _, cidr := range allowedIPs {
 		if err := runCmdWindows("netsh", "interface", "ip", "add", "route", cidr, wgIface); err != nil {
-			// Fallback: route add without interface (netsh is primary for wintun)
-			logf(fmt.Sprintf("netsh add route %s failed: %v, trying route add", cidr, err))
-			ip, mask, err2 := parseCIDR(cidr)
-			if err2 != nil {
-				continue
-			}
-			if err3 := runCmdWindows("route", "add", ip, "mask", mask, "0.0.0.0"); err3 != nil {
-				logf(fmt.Sprintf("route add %s also failed: %v", cidr, err3))
-			}
+			logf(fmt.Sprintf("netsh add route %s failed: %v", cidr, err))
 		}
 		tunnelRoutes = append(tunnelRoutes, cidr)
 	}
@@ -384,57 +367,69 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 }
 
 func (w *WG) teardownWindows() {
-	// Restore physical interface metric
-	gw := defaultGatewayWindows()
-	if gw != "" {
-		_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "auto")
+	if w.activeDevice == nil && w.activeTun == nil {
+		return
 	}
 
-	// Remove exclude routes
+	// Restore physical gateway metric (must happen BEFORE closing WG device)
+	if w.physGW != "" {
+		_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", w.physGW, "metric", "35")
+		w.physGW = ""
+	}
+
+	// Delete exclude routes
 	for _, cidr := range w.activeExcludeRoutes {
-		ip, mask, _ := parseCIDR(cidr)
+		ip, _, _ := parseCIDR(cidr)
 		if ip != "" {
-			_ = runCmdWindows("route", "delete", ip, "mask", mask)
+			_ = runCmdWindows("route", "delete", ip)
 		}
 	}
 	w.activeExcludeRoutes = nil
 
-	// Remove tunnel routes
-	for _, cidr := range w.activeRoutes {
-		ip, mask, _ := parseCIDR(cidr)
-		if ip != "" {
-			_ = runCmdWindows("route", "delete", ip, "mask", mask)
-		}
-	}
-	w.activeRoutes = nil
-
-	// Close WireGuard device first (stops handshake/traffic)
+	// Close WireGuard device
 	if w.activeDevice != nil {
 		w.activeDevice.Close()
 		w.activeDevice = nil
 	}
 
-	// Close TUN device (releases wintun adapter)
+	// Close TUN device (releases wintun adapter, tunnel routes disappear with it)
 	if w.activeTun != nil {
 		w.activeTun.Close()
 		w.activeTun = nil
 	}
 
-	// Force-remove the wintun adapter from Windows network stack
+	// Clean up orphaned adapters
 	cleanupWintunAdapter()
 }
 
-// cleanupWintunAdapter attempts to delete any existing wg-turn adapter from
-// Windows. This prevents the "wg-turn 2", "wg-turn 3" naming issue.
+// cleanupWintunAdapter attempts to delete any existing wintun adapter from
+// Windows. This prevents orphaned adapters and naming issues.
 func cleanupWintunAdapter() {
-	// Try to find and delete the adapter via netsh
+	// Delete our named adapters
 	_ = runCmdWindows("netsh", "interface", "delete", "interface", wgIface)
-	// Also try with the wintun-specific name patterns (wg-turn, wg-turn 2, etc.)
-	for i := 2; i <= 5; i++ {
+	for i := 2; i <= 10; i++ {
 		name := fmt.Sprintf("%s %d", wgIface, i)
 		_ = runCmdWindows("netsh", "interface", "delete", "interface", name)
 	}
-	// Give Windows network stack time to release the name
+	// Also try to find and delete orphaned wintun adapters
+	// They show up as "Подключение по локальной сети" or similar
+	listCmd := exec.Command("cmd", "/c", "netsh interface show interface")
+	hideWindow(listCmd)
+	out, err := listCmd.CombinedOutput()
+	if err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "wintun") || strings.Contains(lower, "wg-turn") {
+				fields := strings.Fields(line)
+				if len(fields) >= 4 {
+					ifName := fields[len(fields)-1]
+					if ifName != wgIface {
+						_ = runCmdWindows("netsh", "interface", "delete", "interface", ifName)
+					}
+				}
+			}
+		}
+	}
 	time.Sleep(100 * time.Millisecond)
 }
 

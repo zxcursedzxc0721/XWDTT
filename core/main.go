@@ -38,8 +38,9 @@ type Event struct {
 	Message string
 
 	// event
-	Name string // "wg_config", "captcha_required", "ready"
-	Data string // JSON строка
+	Name   string   // "wg_config", "captcha_required", "ready"
+	Data   string   // JSON строка
+	TurnIPs []string // IP-адреса TURN-серверов (для exclude routes)
 
 	// stats
 	Active    int32
@@ -267,6 +268,7 @@ func (c *Core) start() error {
 
 	// Конфиг WireGuard
 	configCh := make(chan string, 1)
+	turnIPsCh := make(chan []string, 1)
 	go func() {
 		select {
 		case rawConf, ok := <-configCh:
@@ -274,7 +276,13 @@ func (c *Core) start() error {
 				return
 			}
 			finalConf := patchMTU(rawConf)
-			c.emit(Event{Type: EventEvent, Name: "wg_config", Data: finalConf})
+			var turnIPs []string
+			select {
+			case ips := <-turnIPsCh:
+				turnIPs = ips
+			default:
+			}
+			c.emit(Event{Type: EventEvent, Name: "wg_config", Data: finalConf, TurnIPs: turnIPs})
 		case <-ctx.Done():
 		}
 	}()
@@ -329,7 +337,7 @@ func (c *Core) start() error {
 			go func(groupID int, isFirstGroup bool, configChan chan<- string, workerIds []int, startHashIndex int, waitC, waitS <-chan struct{}, sigC, sigS chan<- struct{}) {
 				defer wg.Done()
 				WorkerGroup(ctx, groupID, startHashIndex, tp, peer, disp, localPort,
-					isFirstGroup, configChan, workerIds, &c.pauseFlag,
+					isFirstGroup, configChan, turnIPsCh, workerIds, &c.pauseFlag,
 					c.cfg.DeviceID, c.cfg.Password, stats, waitC, sigC, waitS, sigS)
 			}(gID, isFirst, cc, ids, g, myWaitCreds, myWaitSpawn, mySignalCreds, mySignalSpawn)
 		}

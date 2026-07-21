@@ -38,8 +38,9 @@ func NewStore() *Store {
 
 // LoadSettings загружает настройки из config.json.
 // Если файла нет — возвращает дефолтные настройки.
+// Если obfsAccepted = false — obfsMode принудительно 'audio'.
 func (s *Store) LoadSettings() AppSettings {
-	defaults := AppSettings{AutoStart: true, ObfsMode: "audio"}
+	defaults := AppSettings{AutoStart: true, ObfsMode: "audio", ObfsAccepted: false}
 	data, err := os.ReadFile(filepath.Join(s.baseDir, "config.json"))
 	if err != nil {
 		return defaults
@@ -47,6 +48,9 @@ func (s *Store) LoadSettings() AppSettings {
 	var settings AppSettings
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return defaults
+	}
+	if !settings.ObfsAccepted {
+		settings.ObfsMode = "audio"
 	}
 	return settings
 }

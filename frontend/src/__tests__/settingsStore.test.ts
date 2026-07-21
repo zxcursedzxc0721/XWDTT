@@ -22,7 +22,7 @@ describe('settingsStore', () => {
   });
 
   it('save → get: roundtrip', () => {
-    const custom = { autoStart: false, obfsMode: 'video' as const };
+    const custom = { autoStart: false, obfsMode: 'video' as const, obfsAccepted: true };
     settingsStore.save(custom);
 
     const loaded = settingsStore.get();
@@ -42,11 +42,12 @@ describe('settingsStore', () => {
   });
 
   it('save: перезаписывает предыдущие', () => {
-    settingsStore.save({ autoStart: false, obfsMode: 'audio' });
-    settingsStore.save({ autoStart: true, obfsMode: 'video' });
+    settingsStore.save({ autoStart: false, obfsMode: 'audio', obfsAccepted: false });
+    settingsStore.save({ autoStart: true, obfsMode: 'video', obfsAccepted: true });
 
     const settings = settingsStore.get();
     expect(settings.autoStart).toBe(true);
     expect(settings.obfsMode).toBe('video');
+    expect(settings.obfsAccepted).toBe(true);
   });
 });

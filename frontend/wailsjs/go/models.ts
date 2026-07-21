@@ -26,6 +26,24 @@ export namespace backend {
 	        this.fingerprint = source["fingerprint"];
 	    }
 	}
+	export class IPInfo {
+	    query: string;
+	    country: string;
+	    status: string;
+	    latency: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new IPInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.query = source["query"];
+	        this.country = source["country"];
+	        this.status = source["status"];
+	        this.latency = source["latency"];
+	    }
+	}
 	export class LogEntry {
 	    level: string;
 	    message: string;

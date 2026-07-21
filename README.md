@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/Wails-v2-red?style=for-the-badge&logo=wails&logoColor=white" alt="Wails">
   <img src="https://img.shields.io/badge/Linux-amd64-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
   <img src="https://img.shields.io/badge/Windows-amd64-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
+  <img src="https://img.shields.io/badge/macOS-Universal-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS">
 </p>
 
 ---
@@ -70,6 +71,12 @@ chmod +x pwdtt-linux-amd64
 
 Скачайте `pwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/PWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен.
 
+### macOS
+
+Скачайте `PWDTT-macos.zip` из [Releases](https://github.com/luminescq/PWDTT/releases), распакуйте и запустите `PWDTT.app`. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
+
+> Universal бинарник: работает на Intel и Apple Silicon (M1/M2/M3/M4).
+
 ---
 
 ## Быстрый старт
@@ -120,6 +127,12 @@ wails build -platform linux/amd64 -tags webkit2_41 -o pwdtt-linux-amd64
 # Windows (кросс-компиляция с Linux)
 wails build -platform windows/amd64
 # → build/bin/pwdtt.exe
+```
+
+```bash
+# macOS (только на macOS)
+wails build -platform darwin/universal
+# → build/bin/pwdtt-macos
 ```
 
 ---

@@ -217,11 +217,13 @@ export default function Connect() {
       if (!profiles) return;
       const existing = serverStore.getAll();
       const existingNames = new Set(existing.map(s => s.name));
+      const existingHosts = new Set(existing.map(s => s.host));
       let changed = false;
       for (const [name, p] of Object.entries(profiles)) {
         if (existingNames.has(name)) continue;
         const host = p.peer || '';
         if (!host) continue;
+        if (existingHosts.has(host)) continue;
         const h4: [string,string,string,string] = [p.hashes?.[0]??'', p.hashes?.[1]??'', p.hashes?.[2]??'', p.hashes?.[3]??''];
         serverStore.add({ name, host, password: p.password ?? '', hashes: h4 });
         changed = true;
@@ -272,30 +274,34 @@ export default function Connect() {
       const applyLink = async () => {
         const h4 = consumed.hashes.slice(0, 4);
         const padded: [string,string,string,string] = [h4[0]??'', h4[1]??'', h4[2]??'', h4[3]??''];
-        await SaveProfile(consumed.name, {
+
+        // Генерируем уникальное имя: "Сервер 1", "Сервер 2", ...
+        const existingNames = serverStore.getAll().map(s => s.name);
+        let autoName = consumed.name || 'Сервер';
+        if (autoName === 'Server') autoName = 'Сервер';
+        let counter = 1;
+        while (existingNames.includes(`${autoName} ${counter}`)) counter++;
+        const name = `${autoName} ${counter}`;
+
+        await SaveProfile(name, {
           peer: consumed.host,
           password: consumed.password,
-          hashes: [],
+          hashes: h4 as unknown as string[],
           turn: '', port: consumed.port || '', device_id: '', listen: '',
         });
-        const existing = serverStore.getAll().find(s => s.host === consumed.host);
-        let s = existing ?? serverStore.add({
-          name: consumed.name,
+        const s = serverStore.add({
+          name,
           host: consumed.host,
           password: consumed.password,
+          hashes: padded,
           power: consumed.workers,
         });
-        if (consumed.hashes.length > 0) {
-          const updated = { ...s, hashes: padded, power: consumed.workers || s.power };
-          serverStore.update(updated);
-          s = updated;
-        }
         setServers(serverStore.getAll());
         setSelected({ ...s });
         setLinkFlash(true);
         if (linkFlashTimerRef.current) clearTimeout(linkFlashTimerRef.current);
         linkFlashTimerRef.current = setTimeout(() => setLinkFlash(false), 800);
-        toastStore.show(existing ? `Профиль обновлён: ${consumed.name}` : `Профиль добавлен: ${consumed.name}`, 3000);
+        toastStore.show(`Профиль добавлен: ${name}`, 3000);
       };
       applyLink();
     });
@@ -328,7 +334,10 @@ export default function Connect() {
         captchaMode: 'auto',
         obfsMode: settingsStore.get().obfsMode || 'audio',
       });
-    } catch {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      logStore.push('ERROR', msg);
+      toastStore.show(msg, 6000);
       tunnelStore.set('idle');
     } finally {
       connectingRef.current = false;
