@@ -256,6 +256,71 @@ func defaultGatewayDarwin() string {
 	return ""
 }
 
+// cleanupStaleExcludeRoutesDarwin — уборка exclude-маршрутов, переживших
+// краш приложения вместе с helper'ом: обычные (не -interface) маршруты сами
+// не исчезают и после смены сети ведут на мёртвый шлюз, глуша VK/Яндекс
+// даже при выключенном туннеле. Права администратора запрашиваются только
+// если протухшие маршруты действительно найдены.
+func cleanupStaleExcludeRoutesDarwin(logf wgLogFunc) {
+	curGW := defaultGatewayDarwin()
+	if curGW == "" {
+		return
+	}
+
+	// Протухший = специфичный маршрут из vkExcludeCIDRs, чей шлюз ≠ текущему
+	staleGWs := map[string]bool{}
+	for _, cidr := range vkExcludeCIDRs {
+		out, err := exec.Command("route", "-n", "get", strings.SplitN(cidr, "/", 2)[0]).Output()
+		if err != nil {
+			continue
+		}
+		var dst, gw string
+		for _, line := range strings.Split(string(out), "\n") {
+			f := strings.Fields(line)
+			if len(f) != 2 {
+				continue
+			}
+			switch f[0] {
+			case "destination:":
+				dst = f[1]
+			case "gateway:":
+				gw = f[1]
+			}
+		}
+		if dst != "" && dst != "default" && gw != "" && gw != curGW && net.ParseIP(gw) != nil {
+			staleGWs[gw] = true
+		}
+	}
+	if len(staleGWs) == 0 {
+		return
+	}
+
+	// Сносим все маршруты через мёртвые шлюзы — включая /32 на TURN-серверы
+	// и DNS, которые заранее не перечислить
+	out, err := exec.Command("netstat", "-rn", "-f", "inet").Output()
+	if err != nil {
+		return
+	}
+	var dels []string
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 && staleGWs[f[1]] {
+			dels = append(dels, "route -q -n delete -net "+shellQuote(f[0]))
+		}
+	}
+	if len(dels) == 0 {
+		return
+	}
+
+	logf(fmt.Sprintf("Найдены маршруты прошлого запуска через мёртвый шлюз (%d шт), удаляю…", len(dels)))
+	osa := fmt.Sprintf("do shell script %q with administrator privileges", strings.Join(dels, "; "))
+	if out, err := exec.Command("osascript", "-e", osa).CombinedOutput(); err != nil {
+		logf(fmt.Sprintf("уборка маршрутов не удалась: %v — %s", err, strings.TrimSpace(string(out))))
+		return
+	}
+	logf("Протухшие маршруты удалены")
+}
+
 func runCmdDarwin(name string, args ...string) error {
 	out, err := exec.Command(name, args...).CombinedOutput()
 	if err != nil {
@@ -334,6 +399,9 @@ func RunWGHelperDarwin(args []string) {
 	var added []string
 	if gw != "" {
 		for _, cidr := range splitCSV(*excludes) {
+			// Снимаем возможный остаток прошлого запуска (краш без уборки) —
+			// иначе add упрётся в старый маршрут с мёртвым шлюзом
+			_ = runCmdDarwin("route", "-q", "-n", "delete", "-net", cidr)
 			if err := runCmdDarwin("route", "-q", "-n", "add", "-net", cidr, gw); err != nil {
 				send(wgHelperMsg{Log: fmt.Sprintf("exclude route %s: %v", cidr, err)}, -1)
 			} else {

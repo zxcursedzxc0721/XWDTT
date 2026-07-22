@@ -37,6 +37,11 @@ func (a *App) Startup(ctx context.Context) {
 	if settings.AutoStart {
 		a.SetAutoStart(true)
 	}
+
+	// Уборка маршрутов, оставшихся от краша прошлого запуска
+	go CleanupStaleExcludeRoutes(func(msg string) {
+		a.onBridgeEvent("log", "INFO", "[WG] "+msg)
+	})
 }
 
 // ═══════════════════════════════════════════════════
