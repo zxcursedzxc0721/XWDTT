@@ -61,6 +61,18 @@ func (w *WG) Apply(conf string, turnIPs []string, logf wgLogFunc) error {
 	}
 }
 
+// CleanupStaleExcludeRoutes убирает exclude-маршруты, оставшиеся после краша
+// прошлого запуска (когда helper не успел сделать уборку). Вызывать при
+// старте приложения; на платформах без такой проблемы — no-op.
+func CleanupStaleExcludeRoutes(logf wgLogFunc) {
+	if logf == nil {
+		logf = func(msg string) { log.Printf("[WG] %s", msg) }
+	}
+	if runtime.GOOS == "darwin" {
+		cleanupStaleExcludeRoutesDarwin(logf)
+	}
+}
+
 func (w *WG) Teardown() {
 	switch runtime.GOOS {
 	case "linux":
