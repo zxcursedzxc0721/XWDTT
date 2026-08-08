@@ -131,12 +131,6 @@ func WorkerGroup(
 	var configRequestInFlight int32
 	var wg sync.WaitGroup
 	var credsMu sync.RWMutex
-	var refreshMu sync.Mutex
-	var lastCredRefresh atomic.Int64
-
-	// refreshCreds больше не используется в новой логике (теперь банятся адреса, а не креды)
-	// Оставляем только если нужен будет manual refresh
-	_ = refreshMu // чтобы не было ошибки unused
 
 	if signalCreds != nil {
 		go func() {
