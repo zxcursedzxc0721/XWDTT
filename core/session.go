@@ -31,6 +31,36 @@ type connectedUDPConn struct{ *net.UDPConn }
 
 func (c *connectedUDPConn) WriteTo(p []byte, _ net.Addr) (int, error) { return c.Write(p) }
 
+// SessionErrorType — тип ошибки сессии
+type SessionErrorType string
+
+const (
+	// ADDRESS_DEAD — этот конкретный TURN-адрес не работает (квота, unreachable, timeout)
+	SessionErrorAddressDead SessionErrorType = "ADDRESS_DEAD"
+	// WRAP_TIMEOUT — DTLS-рукопожатие не прошло, нужно сменить обфускацию
+	SessionErrorWrapTimeout SessionErrorType = "WRAP_TIMEOUT"
+	// FATAL — невосстановимая ошибка (FATAL_AUTH, хеш мёртв и т.д.)
+	SessionErrorFatal SessionErrorType = "FATAL"
+)
+
+// SessionError — структурированная ошибка сессии
+type SessionError struct {
+	Type    SessionErrorType
+	Address string // TURN-адрес, на котором произошла ошибка (если применимо)
+	Err     error
+}
+
+func (e *SessionError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("%s: %v (addr=%s)", e.Type, e.Err, e.Address)
+	}
+	return fmt.Sprintf("%s (addr=%s)", e.Type, e.Address)
+}
+
+func (e *SessionError) Unwrap() error { return e.Err }
+
+// RunSession устанавливает TURN-сессию с указанным адресом.
+// В отличие от предыдущей версии, адрес передаётся явно, а не выбирается по индексу.
 func RunSession(
 	ctx context.Context,
 	tp *TurnParams,
@@ -40,20 +70,29 @@ func RunSession(
 	getConfig bool,
 	configCh chan<- string,
 	sessionID int,
-	creds *Credentials,
+	turnAddr string, // конкретный TURN-адрес
+	turnUser string, // username для TURN
+	turnPass string, // password для TURN
+	cacheStreamID int, // для handleAuthError
 	deviceID, password string,
 	stats *Stats,
-) (bool, error) {
+) (bool, *SessionError) {
 	configDelivered := false
 
-	if len(creds.TurnURLs) == 0 {
-		return false, fmt.Errorf("нет TURN URL в учетных данных")
+	if turnAddr == "" {
+		return false, &SessionError{
+			Type: SessionErrorFatal,
+			Err:  fmt.Errorf("пустой TURN-адрес"),
+		}
 	}
-	selectedURL := creds.TurnURLs[sessionID%len(creds.TurnURLs)]
 
-	urlhost, urlport, err := net.SplitHostPort(selectedURL)
+	urlhost, urlport, err := net.SplitHostPort(turnAddr)
 	if err != nil {
-		return false, fmt.Errorf("разбор TURN URL %q: %w", selectedURL, err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("разбор TURN-адреса: %w", err),
+		}
 	}
 	if tp.Host != "" {
 		urlhost = tp.Host
@@ -61,15 +100,24 @@ func RunSession(
 	if tp.Port != "" {
 		urlport = tp.Port
 	}
-	turnAddr := net.JoinHostPort(urlhost, urlport)
+	turnAddrResolved := net.JoinHostPort(urlhost, urlport)
 
-	resolved, err := net.ResolveUDPAddr("udp", turnAddr)
+	resolved, err := net.ResolveUDPAddr("udp", turnAddrResolved)
 	if err != nil {
-		return false, fmt.Errorf("резолв TURN: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("резолв TURN: %w", err),
+		}
 	}
+
 	c, err := net.DialUDP("udp", nil, resolved)
 	if err != nil {
-		return false, fmt.Errorf("подключение TURN UDP: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("подключение TURN UDP: %w", err),
+		}
 	}
 	defer c.Close()
 	_ = c.SetReadBuffer(socketBufSize)
@@ -86,37 +134,65 @@ func RunSession(
 	}
 
 	tc, err := turn.NewClient(&turn.ClientConfig{
-		STUNServerAddr:         turnAddr,
-		TURNServerAddr:         turnAddr,
+		STUNServerAddr:         turnAddrResolved,
+		TURNServerAddr:         turnAddrResolved,
 		Conn:                   turnConn,
-		Username:               creds.User,
-		Password:               creds.Pass,
+		Username:               turnUser,
+		Password:               turnPass,
 		RequestedAddressFamily: addrFamily,
 		LoggerFactory:          &NullLoggerFactory{},
 	})
 	if err != nil {
-		return false, fmt.Errorf("TURN клиент: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("TURN клиент: %w", err),
+		}
 	}
 	defer tc.Close()
 
 	if err = tc.Listen(); err != nil {
-		return false, fmt.Errorf("TURN Listen: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("TURN Listen: %w", err),
+		}
 	}
 
 	relay, err := tc.Allocate()
 	if err != nil {
-		if isAuthError(err) {
-			handleAuthError(creds.CacheStreamID)
-		}
 		errStr := err.Error()
-		if strings.Contains(errStr, "Quota") || strings.Contains(errStr, "486") {
-			return false, fmt.Errorf("TURN квота: %w", err)
+		errLower := strings.ToLower(errStr)
+
+		// Проверяем на ошибки авторизации (кеш кредов)
+		if isAuthError(err) {
+			handleAuthError(cacheStreamID)
 		}
-		return false, fmt.Errorf("TURN Allocate: %w", err)
+
+		// Квота, unreachable, timeout — всё это "адрес мёртв"
+		if strings.Contains(errLower, "quota") ||
+			strings.Contains(errLower, "486") ||
+			strings.Contains(errLower, "unreachable") ||
+			strings.Contains(errLower, "timeout") ||
+			strings.Contains(errLower, "connection refused") ||
+			strings.Contains(errLower, "no route to host") {
+			return false, &SessionError{
+				Type:    SessionErrorAddressDead,
+				Address: turnAddr,
+				Err:     fmt.Errorf("TURN Allocate: %w", err),
+			}
+		}
+
+		// Остальные ошибки — фатальные
+		return false, &SessionError{
+			Type:    SessionErrorFatal,
+			Address: turnAddr,
+			Err:     fmt.Errorf("TURN Allocate: %w", err),
+		}
 	}
 	defer relay.Close()
 
-	getStreamCache(creds.CacheStreamID).errorCount.Store(0)
+	getStreamCache(cacheStreamID).errorCount.Store(0)
 
 	log.Printf("[СЕССИЯ #%d] Relay: %s", sessionID, relay.LocalAddr())
 
@@ -218,13 +294,21 @@ func RunSession(
 
 	cert, err := selfsign.GenerateSelfSigned()
 	if err != nil {
-		return false, fmt.Errorf("генерация сертификата: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorFatal,
+			Address: turnAddr,
+			Err:     fmt.Errorf("генерация сертификата: %w", err),
+		}
 	}
 
 	select {
 	case handshakeSem <- struct{}{}:
 	case <-sessCtx.Done():
-		return false, sessCtx.Err()
+		return false, &SessionError{
+			Type:    SessionErrorFatal,
+			Address: turnAddr,
+			Err:     sessCtx.Err(),
+		}
 	}
 
 	dtlsCfg := &dtls.Config{
@@ -238,7 +322,11 @@ func RunSession(
 	dtlsConn, err := dtls.Client(pipeB, peer, dtlsCfg)
 	if err != nil {
 		<-handshakeSem
-		return false, fmt.Errorf("DTLS клиент: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("DTLS клиент: %w", err),
+		}
 	}
 	defer dtlsConn.Close()
 
@@ -249,13 +337,19 @@ func RunSession(
 	<-handshakeSem
 
 	if err != nil {
-		if useWrap {
-			errStr := strings.ToLower(err.Error())
-			if strings.Contains(errStr, "deadline") || strings.Contains(errStr, "timeout") {
-				return false, fmt.Errorf("WRAP_AUTH_TIMEOUT: DTLS timeout, пароль/WRAP не подтверждён")
+		errStr := strings.ToLower(err.Error())
+		if useWrap && (strings.Contains(errStr, "deadline") || strings.Contains(errStr, "timeout")) {
+			return false, &SessionError{
+				Type:    SessionErrorWrapTimeout,
+				Address: turnAddr,
+				Err:     fmt.Errorf("DTLS timeout, пароль/WRAP не подтверждён"),
 			}
 		}
-		return false, fmt.Errorf("DTLS хендшейк: %w", err)
+		return false, &SessionError{
+			Type:    SessionErrorAddressDead,
+			Address: turnAddr,
+			Err:     fmt.Errorf("DTLS хендшейк: %w", err),
+		}
 	}
 	log.Printf("[ВОРКЕР #%d] [DTLS] Соединение установлено ✓", sessionID)
 
@@ -267,7 +361,11 @@ func RunSession(
 		if confErr != nil {
 			errStr := confErr.Error()
 			if strings.Contains(errStr, "FATAL_AUTH") {
-				return false, confErr
+				return false, &SessionError{
+					Type:    SessionErrorFatal,
+					Address: turnAddr,
+					Err:     confErr,
+				}
 			}
 			log.Printf("[ВОРКЕР #%d] Ошибка конфига: %v", sessionID, confErr)
 		} else if conf != "" {
