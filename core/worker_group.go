@@ -14,6 +14,15 @@ import (
 const (
 	workersPerGroup  = 9
 	defaultCycleSecs = 36000
+
+	// maxAttemptsPerAddress — сколько раз пробуем один адрес, прежде чем забанить
+	maxAttemptsPerAddress = 3
+
+	// sleepWhenAllBanned — сколько спим, если все адреса забанены
+	sleepWhenAllBanned = 60 * time.Second
+
+	// sleepAfterAddressDead — спим после того как адрес умер (перед переходом к следующему)
+	sleepAfterAddressDead = 500 * time.Millisecond
 )
 
 func WorkerGroup(
@@ -166,10 +175,63 @@ func WorkerGroup(
 
 			shouldGetConfig := getConfig
 			attempt := 0
+			// Храним текущий ObfsMode для этого воркера (может меняться при WRAP_TIMEOUT)
+			workerObfsMode := tp.ObfsMode
+			// Счётчик неудач на текущий адрес
+			addressAttempts := 0
 
 			for {
 				if ctx.Err() != nil {
 					return
+				}
+
+				// Проверяем паузу
+				for atomic.LoadInt32(pauseFlag) != 0 {
+					if ctx.Err() != nil {
+						return
+					}
+					time.Sleep(1 * time.Second)
+				}
+
+				// Берём свежие креды
+				credsMu.RLock()
+				urls := cloneStringSlice(creds.TurnURLs)
+				credsMu.RUnlock()
+
+				if len(urls) == 0 {
+					log.Printf("[ВОРКЕР #%d] Нет TURN-адресов в кредах", wid)
+					select {
+					case <-time.After(5 * time.Second):
+					case <-ctx.Done():
+					}
+					continue
+				}
+
+				// Фильтруем забаненные адреса
+				var available []string
+				for _, u := range urls {
+					if !GlobalBlacklist.IsBanned(u) {
+						available = append(available, u)
+					}
+				}
+
+				// Если все адреса забанены — спим и пробуем заново
+				if len(available) == 0 {
+					log.Printf("[ВОРКЕР #%d] Все TURN-адреса забанены (всего %d), спим %v",
+						wid, len(urls), sleepWhenAllBanned)
+					select {
+					case <-time.After(sleepWhenAllBanned):
+					case <-ctx.Done():
+					}
+					continue
+				}
+
+				// Берём первый доступный адрес
+				turnAddr := available[0]
+
+				// Сбрасываем счётчик попыток, если адрес сменился
+				if len(available) > 0 && turnAddr != "" {
+					// Просто используем адрес, счётчик сбрасываем ниже
 				}
 
 				getConf := false
@@ -181,13 +243,16 @@ func WorkerGroup(
 					cc = configCh
 				}
 
-				credsMu.RLock()
-				credsSnapshot := *creds
-				credsSnapshot.TurnURLs = cloneStringSlice(creds.TurnURLs)
-				credsMu.RUnlock()
-
-				configDelivered, sessErr := RunSession(ctx, tp, peer, d, localPort,
-					getConf, cc, wid, &credsSnapshot, deviceID, password, stats)
+				// Передаём в RunSession конкретный адрес и креды
+				configDelivered, sessErr := RunSession(
+					ctx, tp, peer, d, localPort,
+					getConf, cc, wid,
+					turnAddr,       // конкретный TURN-адрес
+					user,           // username из кредов (не меняется)
+					pass,           // password из кредов (не меняется)
+					credStreamID,   // для handleAuthError
+					deviceID, password, stats,
+				)
 
 				if getConf {
 					if configDelivered {
@@ -197,70 +262,96 @@ func WorkerGroup(
 					}
 				}
 
+				// Обработка ошибок
 				if sessErr != nil {
 					if ctx.Err() != nil {
 						return
 					}
-					errStr := sessErr.Error()
-					errStrLower := strings.ToLower(errStr)
 
-					turnAllocAttrMissing := strings.Contains(errStrLower, "turn allocate") &&
-						strings.Contains(errStrLower, "attribute not found")
-					turnCredRefreshNeeded := turnAllocAttrMissing ||
-						strings.Contains(errStrLower, "turn allocate auth") ||
-						strings.Contains(errStrLower, "invalid credential") ||
-						strings.Contains(errStrLower, "stale nonce") ||
-						strings.Contains(errStrLower, "allocation mismatch") ||
-						strings.Contains(errStrLower, "error 508") ||
-						strings.Contains(errStrLower, "turn квота") ||
-						strings.Contains(errStrLower, "quota")
+					log.Printf("[ВОРКЕР #%d] Ошибка сессии: %v (адрес=%s, тип=%s)",
+						wid, sessErr.Err, sessErr.Address, sessErr.Type)
 
-					if strings.Contains(errStrLower, "rate limit") ||
-						strings.Contains(errStrLower, "flood control") ||
-						strings.Contains(errStrLower, "ip mismatch") ||
-						strings.Contains(errStrLower, "error 29") {
-						errStr += " (ошибка со стороны ВК)"
-					}
+					switch sessErr.Type {
 
-					if strings.Contains(errStr, "хеш мёртв") ||
-						strings.Contains(errStr, "FATAL_AUTH") {
-						log.Printf("[ВОРКЕР #%d] Фатальная ошибка: %s", wid, errStr)
+					case SessionErrorAddressDead:
+						// Адрес мёртв — баним и пробуем следующий
+						if sessErr.Address != "" {
+							GlobalBlacklist.Ban(sessErr.Address)
+							log.Printf("[ВОРКЕР #%d] TURN-адрес %s забанен на 5 минут", wid, sessErr.Address)
+						}
+						// Небольшая пауза перед переходом к следующему адресу
+						select {
+						case <-time.After(sleepAfterAddressDead):
+						case <-ctx.Done():
+						}
+						// Продолжаем цикл — возьмём следующий доступный адрес
+						continue
+
+					case SessionErrorWrapTimeout:
+						// DTLS-таймаут — пробуем сменить обфускацию
+						log.Printf("[ВОРКЕР #%d] WRAP_TIMEOUT на адресе %s, пробуем сменить обфускацию",
+							wid, sessErr.Address)
+
+						// Меняем режим обфускации
+						if workerObfsMode == "audio" {
+							workerObfsMode = "video"
+						} else {
+							workerObfsMode = "audio"
+						}
+						tp.ObfsMode = workerObfsMode
+						log.Printf("[ВОРКЕР #%d] Режим обфускации изменён на %s", wid, workerObfsMode)
+
+						// Увеличиваем счётчик попыток на этом адресе
+						addressAttempts++
+
+						// Если слишком много попыток на одном адресе — баним его
+						if addressAttempts >= maxAttemptsPerAddress {
+							if sessErr.Address != "" {
+								GlobalBlacklist.Ban(sessErr.Address)
+								log.Printf("[ВОРКЕР #%d] TURN-адрес %s забанен после %d попыток",
+									wid, sessErr.Address, addressAttempts)
+							}
+							addressAttempts = 0
+							// Продолжаем цикл — возьмём следующий адрес
+							continue
+						}
+
+						// Пробуем тот же адрес с новой обфускацией
+						continue
+
+					case SessionErrorFatal:
+						// Фатальная ошибка — выходим
+						log.Printf("[ВОРКЕР #%d] Фатальная ошибка: %v", wid, sessErr.Err)
 						return
-					}
 
-					attempt++
-					if turnAllocAttrMissing {
-						log.Printf("[ВОРКЕР #%d] [TURN] Allocate вернул неполный ответ, обновляем TURN-креды и повторяем (попытка %d): %s", wid, attempt, errStr)
-						refreshCreds("TURN Allocate attribute-not-found")
-					} else if turnCredRefreshNeeded {
-						log.Printf("[ВОРКЕР #%d] [TURN] Ошибка allocation/кредов, обновляем TURN-креды и повторяем (попытка %d): %s", wid, attempt, errStr)
-						refreshCreds("TURN allocation error")
-					} else {
-						log.Printf("[ВОРКЕР #%d] Ошибка (попытка %d): %s", wid, attempt, errStr)
-					}
-
-					isStunDeath := strings.Contains(errStrLower, "error 29") ||
-						strings.Contains(errStrLower, "cannot create socket")
-
-					if isStunDeath {
-						log.Printf("[ВОРКЕР #%d] Невосстановимая TURN/STUN ошибка, завершение: %s", wid, errStr)
-						return
+					default:
+						// Неизвестный тип ошибки — спим и пробуем заново
+						log.Printf("[ВОРКЕР #%d] Неизвестная ошибка: %v", wid, sessErr)
+						select {
+						case <-time.After(5 * time.Second):
+						case <-ctx.Done():
+						}
+						continue
 					}
 				}
 
-				if ctx.Err() != nil {
-					return
+				// Успех — сбрасываем счётчики
+				addressAttempts = 0
+				// Возвращаем ObfsMode к исходному (если он менялся)
+				if workerObfsMode != tp.ObfsMode {
+					workerObfsMode = tp.ObfsMode
 				}
 
-				retryDelay := time.Duration(5+rand.Intn(11)) * time.Second
+				// После успешной сессии — небольшая пауза перед следующим циклом
 				select {
-				case <-time.After(retryDelay):
+				case <-time.After(100 * time.Millisecond):
 				case <-ctx.Done():
 					return
 				}
 			}
 		}(wid)
 
+		// Задержка между запуском воркеров (как и было)
 		time.Sleep(200 * time.Millisecond)
 	}
 
