@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"log"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -23,6 +22,15 @@ const (
 
 	// sleepAfterAddressDead — спим после того как адрес умер (перед переходом к следующему)
 	sleepAfterAddressDead = 500 * time.Millisecond
+
+	// workerStartDelay — задержка между запуском воркеров
+	workerStartDelay = 200 * time.Millisecond
+
+	// workerBatchDelay — задержка между первой и второй волной воркеров (5 секунд)
+	workerBatchDelay = 5 * time.Second
+
+	// firstBatchSize — сколько воркеров запускаем в первой волне
+	firstBatchSize = 5
 )
 
 func WorkerGroup(
@@ -126,31 +134,9 @@ func WorkerGroup(
 	var refreshMu sync.Mutex
 	var lastCredRefresh atomic.Int64
 
-	refreshCreds := func(reason string) bool {
-		refreshMu.Lock()
-		defer refreshMu.Unlock()
-
-		now := time.Now().Unix()
-		last := lastCredRefresh.Load()
-		if last > 0 && now-last < 15 {
-			log.Printf("[TURN] Креды уже обновлялись %d сек назад, ждём следующий retry (%s)", now-last, reason)
-			return true
-		}
-
-		getStreamCache(credStreamID).invalidate(credStreamID)
-		u, p, urls, refreshErr := GetCreds(ctx, hash, credStreamID)
-		if refreshErr != nil {
-			log.Printf("[TURN] Не удалось обновить креды после %s: %v", reason, refreshErr)
-			return false
-		}
-
-		credsMu.Lock()
-		creds = &Credentials{User: u, Pass: p, TurnURLs: urls, CacheStreamID: credStreamID}
-		credsMu.Unlock()
-		lastCredRefresh.Store(time.Now().Unix())
-		log.Printf("[TURN] Креды обновлены после %s, TURN urls=%d", reason, len(urls))
-		return true
-	}
+	// refreshCreds больше не используется в новой логике (теперь банятся адреса, а не креды)
+	// Оставляем только если нужен будет manual refresh
+	_ = refreshMu // чтобы не было ошибки unused
 
 	if signalCreds != nil {
 		go func() {
@@ -167,18 +153,37 @@ func WorkerGroup(
 		}
 	}
 
-	for _, wid := range workerIDs {
+	// Запускаем воркеры с поэтапной задержкой
+	for idx, wid := range workerIDs {
 		wg.Add(1)
 
-		go func(wid int) {
+		// Определяем задержку перед запуском этого воркера
+		var startDelay time.Duration
+		if idx < firstBatchSize {
+			// Первая волна: 5 воркеров с задержкой 200ms
+			startDelay = time.Duration(idx) * workerStartDelay
+		} else {
+			// Вторая волна: задержка = (первая волна) + 5 секунд + (индекс во второй волне) * 200ms
+			secondWaveIdx := idx - firstBatchSize
+			startDelay = time.Duration(firstBatchSize)*workerStartDelay + workerBatchDelay + time.Duration(secondWaveIdx)*workerStartDelay
+		}
+
+		go func(wid int, delay time.Duration) {
+			// Ждём свою задержку перед стартом
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				wg.Done()
+				return
+			}
+
 			defer wg.Done()
 
 			shouldGetConfig := getConfig
-			attempt := 0
-			// Храним текущий ObfsMode для этого воркера (может меняться при WRAP_TIMEOUT)
-			workerObfsMode := tp.ObfsMode
 			// Счётчик неудач на текущий адрес
 			addressAttempts := 0
+			// Храним текущий ObfsMode для этого воркера (может меняться при WRAP_TIMEOUT)
+			workerObfsMode := tp.ObfsMode
 
 			for {
 				if ctx.Err() != nil {
@@ -228,11 +233,6 @@ func WorkerGroup(
 
 				// Берём первый доступный адрес
 				turnAddr := available[0]
-
-				// Сбрасываем счётчик попыток, если адрес сменился
-				if len(available) > 0 && turnAddr != "" {
-					// Просто используем адрес, счётчик сбрасываем ниже
-				}
 
 				getConf := false
 				if shouldGetConfig && atomic.LoadInt32(&configSent) == 0 {
@@ -349,10 +349,7 @@ func WorkerGroup(
 					return
 				}
 			}
-		}(wid)
-
-		// Задержка между запуском воркеров (как и было)
-		time.Sleep(200 * time.Millisecond)
+		}(wid, startDelay)
 	}
 
 	if signalSpawn != nil {
