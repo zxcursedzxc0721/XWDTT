@@ -412,8 +412,6 @@ func (c *Core) getCaptchaMode() string {
 }
 
 // patchMTU устанавливает MTU для WireGuard интерфейса.
-// Оптимальное значение для IPv4 поверх DTLS/TURN — 1420 байт.
-// Это максимальный MTU для WireGuard поверх IPv4 (1500 - 40 IP - 8 UDP - 32 WireGuard).
 func patchMTU(conf string) string {
 	if strings.Contains(conf, "MTU =") {
 		return conf
@@ -423,7 +421,7 @@ func patchMTU(conf string) string {
 	for _, line := range lines {
 		out = append(out, line)
 		if strings.TrimSpace(line) == "[Interface]" {
-			out = append(out, "MTU = 1420")
+			out = append(out, "MTU = 1280")
 		}
 	}
 	return strings.Join(out, "\n")
