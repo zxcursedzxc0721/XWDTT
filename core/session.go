@@ -17,12 +17,12 @@ import (
 )
 
 const (
-	workerSendBuf      = 512                     // буфер отправки воркера (было 128)
-	sessionReadTimeout = 30 * time.Minute        // таймаут чтения сессии
-	readBufSize        = 8192                    // размер буфера чтения (было 1600)
-	socketBufSize      = 4 * 1024 * 1024         // размер буфера сокета (было 625KB, теперь 4MB)
-	keepaliveByte      = 0xFF                    // байт keepalive
-	keepaliveInterval  = 5 * time.Second         // интервал keepalive (было 15s)
+	workerSendBuf      = 128
+	sessionReadTimeout = 30 * time.Minute
+	readBufSize        = 1600
+	socketBufSize      = 625 * 1024
+	keepaliveByte      = 0xFF
+	keepaliveInterval  = 15 * time.Second
 )
 
 var handshakeSem = make(chan struct{}, 3)
@@ -175,8 +175,7 @@ func RunSession(
 			strings.Contains(errLower, "unreachable") ||
 			strings.Contains(errLower, "timeout") ||
 			strings.Contains(errLower, "connection refused") ||
-			strings.Contains(errLower, "no route to host") ||
-			strings.Contains(errLower, "all retransmissions failed") {
+			strings.Contains(errLower, "no route to host") {
 			return false, &SessionError{
 				Type:    SessionErrorAddressDead,
 				Address: turnAddr,
