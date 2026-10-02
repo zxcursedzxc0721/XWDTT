@@ -6,7 +6,7 @@
 >
 > **Язык общения с пользователем:** русский.
 >
-> **Статус работ:** анализ завершён, код ещё не менялся. Начинать с Этапа 1.
+> **Статус работ:** Этапы 1–2 завершены (02.10.2026). Продолжать с Этапа 3.
 
 ---
 
@@ -98,7 +98,16 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
   колбэк `onEvent`, добавлены `Pause/Resume` в Bridge); `backend/admin_windows.go` — автоэлевация
   UAC вместо манифеста (принято решение: runtime-элевация, go-winres НЕ нужен); `go mod tidy` —
   Wails удалён; `go build` для windows/linux/darwin + `go test ./...` зелёные.
-- [ ] **Этап 2.** Консольный интерфейс (CLI)
+- [x] **Этап 2.** Консольный интерфейс (CLI) — **ГОТОВО (02.10.2026):** новый пакет `cli/`
+  (`cli.go`-роутер, `print.go`-принтер событий, `link.go`-парсер wdtt:/qwdtt: ссылок с
+  upsert-семантикой, `connect.go`-флаги/элевация/Ctrl+C, `servers.go`, `settings.go`,
+  `interactive.go`, `misc.go`, `tty_windows.go`-VT); `main.go` → `cli.Run(os.Args[1:])`;
+  `AppSettings.Workers/Fingerprint`, `ProfileData.Workers` (omitempty); элевация UAC
+  перенесена после валидации (ошибки видны без UAC), в интерактиве — при старте;
+  убран шум инициализации `[VK Auth] WARNING` (пакетный init шёл в stderr до main) и
+  лог `[BRIDGE] WG интерфейс снят` при пустом `Disconnect`; юнит-тесты `tests/cli_test.go`
+  (парсер ссылок, SplitCommandLine); `go build` (windows/linux/darwin amd64) +
+  `go vet` + `go test ./...` зелёные; smoke-тесты CLI/интерактива пройдены.
 - [ ] **Этап 3.** Split tunneling (белый список + резолв доменов)
 - [ ] **Этап 4.** Обновление ядра из qWDTT (4.1 скорость, 4.2 надёжность, 4.3 DoH+replay, 4.4 RAW/NoDTLS, 4.5 CLI-фичи)
 - [ ] **Этап 5.** Тесты, CI, README
@@ -199,6 +208,10 @@ stats/logs/pause/resume/help/quit`; логи продолжают печитат
 **Про `disconnect`:** либо `connect` живёт в своём процессе (тогда Ctrl+C = disconnect, а
 отдельная команда не нужна), либо демон. **Принято:** процесс-модель — `connect` блокирует
 терминал, Ctrl+C отключает. `pwdtt disconnect` не нужен; в интерактивном режиме команда есть.
+
+**Реализовано (Этап 2):** `pause/resume/disconnect` как отдельные команды печатают подсказку
+(работать только в интерактиве/окне connect); `stats`/`logs`/`update`/`report`/`version` —
+полноценные команды; `raw`/`notls`-флаги `connect` и `ips`/`route`/`doh` — Этапы 3–4.
 
 **Приёмка:**
 - `pwdtt servers add "wdtt://..."` создаёт профиль в `~/.config/pwdtt/servers/`

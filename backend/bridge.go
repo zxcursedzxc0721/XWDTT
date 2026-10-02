@@ -107,9 +107,8 @@ func (b *Bridge) Disconnect() {
 
 	// Tear down WireGuard interface immediately — don't wait for core shutdown
 	wg.Teardown()
-	log.Printf("[BRIDGE] WG интерфейс снят по запросу пользователя")
-
 	if c != nil {
+		log.Printf("[BRIDGE] WG интерфейс снят по запросу пользователя")
 		c.Stop()
 	}
 }

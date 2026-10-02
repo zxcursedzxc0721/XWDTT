@@ -48,7 +48,8 @@ func loadVKCredentials() []VKCredentials {
 			return creds
 		}
 	}
-	log.Printf("[VK Auth] WARNING: using embedded VK credentials.")
+	// Используем встроенные креды (штатный режим) — без лога: пакетный init
+	// выполняется до main, вывод мусорил бы в консоль каждого запуска CLI.
 	return []VKCredentials{
 
 		{ClientID: deobf(";535939", -3), ClientSecret: deobf("oPUvWlPF|Sqs8yirogpq", -3)},

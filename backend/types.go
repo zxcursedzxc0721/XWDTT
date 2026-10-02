@@ -23,6 +23,7 @@ type ProfileData struct {
 	TurnPort string   `json:"port"`      // переопределение порта TURN
 	DeviceID string   `json:"device_id"` // уникальный ID устройства
 	TurnTCP  bool     `json:"turn_tcp"`  // использовать TCP транспорт
+	Workers  int      `json:"workers,omitempty"` // воркеры (0 = авто), приходят из qwdtt-ссылки
 }
 
 // AppSettings — настройки приложения, хранятся в ~/.config/pwdtt/config.json.
@@ -31,4 +32,6 @@ type AppSettings struct {
 	ObfsMode     string `json:"obfsMode"`     // audio/video
 	ObfsAccepted bool   `json:"obfsAccepted"` // пользователь принял предупреждение об обфускации
 	TurnTCP      bool   `json:"turnTcp"`      // использовать TCP транспорт
+	Workers      int    `json:"workers,omitempty"`     // воркеры по умолчанию (0 = авто)
+	Fingerprint  string `json:"fingerprint,omitempty"` // chrome/android/ios/safari/firefox
 }
