@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"log"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -23,14 +24,20 @@ const (
 	// sleepAfterAddressDead — спим после того как адрес умер (перед переходом к следующему)
 	sleepAfterAddressDead = 500 * time.Millisecond
 
-	// workerStartDelay — задержка между запуском воркеров
-	workerStartDelay = 200 * time.Millisecond
+	// workerStartDelay — линейная задержка между стартом воркеров (i*75мс).
+	// Старая двухволновая схема (5 воркеров через 200мс, остальные через 5с)
+	// оставляла 4 воркера простаивать полпервых секунд — с ней скорость
+	// набиралась заметно медленнее.
+	workerStartDelay = 75 * time.Millisecond
 
-	// workerBatchDelay — задержка между первой и второй волной воркеров (5 секунд)
-	workerBatchDelay = 5 * time.Second
-
-	// firstBatchSize — сколько воркеров запускаем в первой волне
-	firstBatchSize = 5
+	// allocateGateInterval — общий rate-limit на TURN Allocate по всей группе:
+	// не более одной новой аллокации за тик, независимо от того, сколько
+	// воркеров сейчас готовы её выполнить (стартовый stagger — отдельная вещь,
+	// он размазывает старт горутин, но не сами ретраи Allocate внутри уже
+	// запущенных). Без этого на нестабильной сети несколько воркеров всё равно
+	// накладываются друг на друга и вместе выжигают VK-квоту (error 486)
+	// быстрее, чем должны.
+	allocateGateInterval = 100 * time.Millisecond
 )
 
 func WorkerGroup(
@@ -73,10 +80,12 @@ func WorkerGroup(
 	}
 
 	// Сигнал следующей группе не должен зависеть от успешности GetCreds ниже:
-	// иначе один transient-фейл VK API навсегда блокирует все последующие группы
+	// иначе один transient-фейл VK API навсегда блокирует все последующие группы.
+	// Фора 500+rand(250)мс — как у референса: следующая группа стартует почти
+	// сразу, а не через 2 секунды (быстрый набор полных 9 воркеров).
 	if signalCreds != nil {
 		go func() {
-			time.Sleep(2 * time.Second)
+			time.Sleep(time.Duration(500+rand.Intn(250)) * time.Millisecond)
 			close(signalCreds)
 		}()
 	}
@@ -190,20 +199,15 @@ func WorkerGroup(
 	var configRequestInFlight int32
 	var wg sync.WaitGroup
 
-	// Запускаем воркеры с поэтапной задержкой
+	// Общий rate-limit на TURN Allocate по всей группе — см. allocateGateInterval
+	allocateTicker := time.NewTicker(allocateGateInterval)
+	defer allocateTicker.Stop()
+
+	// Запускаем воркеры с линейной задержкой i*75мс (референс: group.go)
 	for idx, wid := range workerIDs {
 		wg.Add(1)
 
-		// Определяем задержку перед запуском этого воркера
-		var startDelay time.Duration
-		if idx < firstBatchSize {
-			// Первая волна: 5 воркеров с задержкой 200ms
-			startDelay = time.Duration(idx) * workerStartDelay
-		} else {
-			// Вторая волна: задержка = (первая волна) + 5 секунд + (индекс во второй волне) * 200ms
-			secondWaveIdx := idx - firstBatchSize
-			startDelay = time.Duration(firstBatchSize)*workerStartDelay + workerBatchDelay + time.Duration(secondWaveIdx)*workerStartDelay
-		}
+		startDelay := time.Duration(idx) * workerStartDelay
 
 		go func(wid int, delay time.Duration) {
 			// Ждём свою задержку перед стартом
@@ -270,8 +274,10 @@ func WorkerGroup(
 					continue
 				}
 
-				// Берём первый доступный адрес
-				turnAddr := available[0]
+				// Берём адрес по кругу (wid % n), а не всегда первый:
+				// иначе все воркеры группы дублируют один relay, и при его
+				// деградации падает вся группа. Только незабаненные участвуют.
+				turnAddr := available[wid%len(available)]
 
 				getConf := false
 				if shouldGetConfig && atomic.LoadInt32(&configSent) == 0 {
@@ -292,6 +298,7 @@ func WorkerGroup(
 						workerObfsMode,
 						credStreamID, // для handleAuthError
 						deviceID, password, stats,
+						allocateTicker.C, // общий rate-limit Allocate на группу
 					)
 
 				if getConf {
@@ -460,4 +467,13 @@ type TurnParams struct {
 	WrapKey      []byte
 	ObfsMode     string
 	TCPTransport bool
+
+	// NoDTLS: пропустить DTLS и идти RTP-obfs AEAD напрямую поверх TURN relay
+	// (см. obfsDirectConn в session.go). Требует useWrap (без WRAP нет
+	// шифрования) и сервер с поддержкой (`-listen-direct`).
+	NoDTLS bool
+	// RawMode: raw-IP без WireGuard (см. server/main.go -listen-raw,
+	// handleConnRaw). Подразумевает NoDTLS — сервер на -listen-raw DTLS
+	// не понимает.
+	RawMode bool
 }

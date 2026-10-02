@@ -65,6 +65,9 @@ type Config struct {
 	ObfsMode    string   // audio/video
 	Fingerprint string   // chrome/android/ios/safari/firefox
 	TurnTCP     bool     // использовать TCP транспорт
+	DNS         string   // DNS для резолва VK: yandex/cloudflare/google/doh-*/custom:IP/doh:URL ("" = yandex)
+	NoDTLS      bool     // пропустить DTLS, идти RTP-obfs AEAD напрямую поверх TURN
+	RawMode     bool     // raw-IP без WireGuard (сервер с -listen-raw)
 }
 
 // ═══════════════════════════════════════════════════
@@ -83,6 +86,24 @@ type Core struct {
 	startOnce         sync.Once // guard от двойного Start()
 	startErr          atomic.Value // *startFailure — ошибка первого Start(), если он провалился
 	once              sync.Once // guard от двойного Stop()
+
+	// disp — диспетчер текущего запуска (для raw-режима: backend поднимает
+	// TUN после RAWCONF и передаёт его сюда через AttachTUN).
+	mu   sync.RWMutex
+	disp *Dispatcher
+}
+
+// AttachTUN подключает TUN-устройство к диспетчеру (только raw-режим).
+// Вызывается backend'ом после обработки события raw_config.
+func (c *Core) AttachTUN(t RawTUN) error {
+	c.mu.RLock()
+	d := c.disp
+	c.mu.RUnlock()
+	if d == nil {
+		return fmt.Errorf("диспетчер не запущен")
+	}
+	d.AttachTUN(t)
+	return nil
 }
 
 // startFailure — обёртка для atomic.Value (чтобы разные error-типы не паниковали).
@@ -167,7 +188,7 @@ func (c *Core) start() error {
 		}
 	}()
 
-	setupGlobalResolver()
+	setupGlobalResolver(c.cfg.DNS)
 
 	// Все log.Printf → в канал событий (с фильтрацией)
 	// Без таймстемпа — UI добавляет своё время
@@ -244,6 +265,8 @@ func (c *Core) start() error {
 		WrapKey:      wrapKey,
 		ObfsMode:     c.cfg.ObfsMode,
 		TCPTransport: c.cfg.TurnTCP,
+		NoDTLS:       c.cfg.NoDTLS || c.cfg.RawMode,
+		RawMode:      c.cfg.RawMode,
 	}
 
 	// Локальный UDP сокет
@@ -294,8 +317,17 @@ func (c *Core) start() error {
 		},
 	)
 
-	// Диспетчер
-	disp := NewDispatcher(ctx, localConn, stats)
+	// Диспетчер: в raw-режиме TUN ещё не получен (его поднимет backend
+	// после RAWCONF) — используем pending-вариант с AttachTUN.
+	var disp *Dispatcher
+	if c.cfg.RawMode {
+		disp = NewDispatcherPendingTUN(ctx, stats)
+	} else {
+		disp = NewDispatcher(ctx, localConn, stats)
+	}
+	c.mu.Lock()
+	c.disp = disp
+	c.mu.Unlock()
 
 	// Конфиг WireGuard
 	configCh := make(chan string, 1)
@@ -304,6 +336,19 @@ func (c *Core) start() error {
 		select {
 		case rawConf, ok := <-configCh:
 			if !ok || rawConf == "" {
+				return
+			}
+			if strings.HasPrefix(rawConf, "RAWCONF:") {
+				// Raw-режим: сервер назначил IP/DNS/MTU. Отдаём как есть —
+				// backend поднимет TUN-интерфейс и вызовет AttachTUN.
+				// TURN-IP нужны для exclude-маршрутов (мимо туннеля).
+				var turnIPs []string
+				select {
+				case ips := <-turnIPsCh:
+					turnIPs = ips
+				default:
+				}
+				c.emit(Event{Type: EventEvent, Name: "raw_config", Data: rawConf, TurnIPs: turnIPs})
 				return
 			}
 			finalConf := patchMTU(rawConf)

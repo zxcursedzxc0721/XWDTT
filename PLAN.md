@@ -120,7 +120,33 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
   CLI: `pwdtt route [full|split]`, `pwdtt ips list|add|rm`; 13 тестов
   (`tests/routeplan_test.go`); `go build` (3 ОС) + `go vet` + `go test ./...` зелёные;
   smoke-тест команд пройден.
-- [ ] **Этап 4.** Обновление ядра из qWDTT (4.1 скорость, 4.2 надёжность, 4.3 DoH+replay, 4.4 RAW/NoDTLS, 4.5 CLI-фичи)
+- [x] **Этап 4.** Обновление ядра из qWDTT — **ГОТОВО (02.10.2026):**
+  - **4.1 скорость:** диспетчер — `PrioCh`/`prioThreshold=128`/`chunkSizeFor`/`maxDwellMS=15`,
+    интерфейс `RawTUN`+`AttachTUN` (на Windows у wintun `File()==nil`, поэтому интерфейс
+    вместо `*os.File`); `core/raw_diag.go`; worker_group — старт `i*75ms`, каскад
+    `500+rand(250)`мс, allocate-gate 100мс, round-robin relay из незабаненных.
+  - **4.2 надёжность:** writeDeadline 3с; keepalive 10с, 25+rand(20) байт через `slot.PrioCh`
+    (Writer читает PrioCh первым); Reader — неблокирующий `default` в ReturnCh.
+  - **4.3 DoH+replay:** `replayWindow` в `core/obfs.go` (span=4096*961, maxEntries=8192) +
+    `replay.accept()` в relay-читалке; DoH — `core/doh.go`, `setupGlobalResolver`,
+    `Config.DNS`; настройка `doh` (`AppSettings.DoH`, default yandex, `settings set doh`);
+    тесты `obfs_replay_test.go` (4) и `doh_test.go` (5).
+  - **4.4 RAW/NoDTLS:** `TurnParams.NoDTLS/RawMode` из CLI `-notls`/`-raw` → `core.Config`;
+    `session.go` — общий `activeConn` + тип `obfsDirectConn` (Read с replay, Write через
+    `obfsWrapPacket`), DTLS-ветка изолирована (pipeA/pipeB локальные, defer-порядок);
+    `RequestRawConfig` в `protocol.go`, событие `raw_config` (+TurnIPs); новый
+    `backend/wg_raw.go` — `ApplyRaw` поднимает wintun **без** WG-устройства (address /32
+    как на Android, маршруты по `BuildRoutePlan`, DNS из RAWCONF только в full),
+    обёртка `rawTunAdapter` (batch-Read/Write tun.Device → однопакетный RawTUN) →
+    `core.AttachTUN`; заглушка non-Windows; тесты `tests/raw_test.go`.
+  - **4.5 CLI-фичи:** `pwdtt ping [имя]` (`core/ping.go` — перенос `RunPing`: TURN Allocate
+    + DTLS-хендшейк; в raw/no-dtls — RTT на запросе конфига через RTP-obfs; перебор хешей);
+    `pwdtt servers check <имя>` (перенос `runHashChecks`: статусы ok/captcha/dead/limited/
+    network); `pause`/`resume` — `Bridge.Pause/Resume` уже отданы в интерактив (команды из
+    отдельного процесса осознанно невозможны — процесс-модель); тест
+    `tests/check_test.go`.
+  - Приёмка: `go build`/`go vet`/`go test` зелёные (оба модуля, 3 ОС), бенчмарки
+    `tests/benchmarks_test.go` — деградации нет; ручная проверка на Windows за пользователем.
 - [ ] **Этап 5.** Тесты, CI, README
 
 **После каждого этапа обязательно:** `go build ./...` и `go test ./...` — должны быть зелёными.

@@ -13,6 +13,86 @@ import (
 
 var aeadCache sync.Map
 
+// ─── Replay window (защита от повторной доставки пакетов) ───
+//
+// Перенос из proxy-turn-vk-android/go_client/obfs.go. AEAD гарантирует
+// аутентификацию и конфиденциальность, но НЕ предотвращает повтор: пакет,
+// перехваченный DPI/ MITM, может быть доставлен повторно и будет расшифрован
+// успешно. Replay window пропускает каждый (SSRC, seq, ts, nonce) ровно
+// один раз и отбрасывает пакеты, слишком старые относительно самого нового.
+
+const replayWindowSpan = uint64(4096 * 961)
+const replayWindowMaxEntries = 8192
+
+// rtpHeaderLenLegacy — голый 12-байтовый RTP-заголовок (без extension),
+// минимальная длина валидного кадра для replay window.
+const rtpHeaderLenLegacy = 12
+
+type replayWindow struct {
+	mu          sync.Mutex
+	seen        map[[12]byte]uint64
+	ssrc        uint32
+	highestTime uint64
+	initialized bool
+}
+
+// accept — true, если пакет свежий и первый раз; false = повтор/слишком старый.
+func (w *replayWindow) accept(wire []byte) bool {
+	if len(wire) < rtpHeaderLenLegacy {
+		return false
+	}
+	ssrc := binary.BigEndian.Uint32(wire[8:12])
+	seq := binary.BigEndian.Uint16(wire[2:4])
+	ts := binary.BigEndian.Uint32(wire[4:8])
+	var nonce [12]byte
+	copy(nonce[:], obfsBuildNonce(ssrc, seq, ts))
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.initialized {
+		w.ssrc = ssrc
+		w.highestTime = uint64(ts)
+		w.seen = make(map[[12]byte]uint64, 4096)
+		w.initialized = true
+	} else if w.ssrc != ssrc {
+		// Смена SSRC (переподключение на том же relay) — начинаем заново.
+		return false
+	}
+	if _, exists := w.seen[nonce]; exists {
+		return false
+	}
+
+	// Разворот 32-битного RTP timestamp в 64-битную шкалу, устойчивую к wrap.
+	base := w.highestTime &^ uint64(0xffffffff)
+	extended := base | uint64(ts)
+	if extended+(1<<31) < w.highestTime {
+		extended += 1 << 32
+	} else if extended > w.highestTime+(1<<31) && extended >= 1<<32 {
+		extended -= 1 << 32
+	}
+	if extended+replayWindowSpan < w.highestTime {
+		return false // слишком старый — за пределами окна
+	}
+	if extended > w.highestTime {
+		w.highestTime = extended
+	}
+
+	if len(w.seen) >= replayWindowMaxEntries {
+		cutoff := w.highestTime - min(w.highestTime, replayWindowSpan)
+		for value, packetTime := range w.seen {
+			if packetTime < cutoff {
+				delete(w.seen, value)
+			}
+		}
+		if len(w.seen) >= replayWindowMaxEntries {
+			return false
+		}
+	}
+	w.seen[nonce] = extended
+	return true
+}
+
 func getAEAD(key []byte) (cipher.AEAD, error) {
 	if len(key) != wrapKeyLen {
 		return nil, fmt.Errorf("obfs: key must be %d bytes", wrapKeyLen)

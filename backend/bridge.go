@@ -81,6 +81,9 @@ func (b *Bridge) Connect(params ConnectParams) error {
 		ObfsMode:    params.ObfsMode,
 		Fingerprint: params.Fingerprint,
 		TurnTCP:     params.TurnTCP,
+		DNS:         params.DoH,
+		NoDTLS:      params.NoDTLS,
+		RawMode:     params.Raw,
 	}
 
 	c := core.New(cfg)
@@ -249,6 +252,42 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 				}
 			case "captcha_required":
 				b.onEvent("captcha_required", ev.Data)
+			case "raw_config":
+				// RAW-режим: сервер назначил IP/DNS/MTU — поднимаем wintun
+				// без WireGuard-устройства и отдаём его диспетчеру.
+				b.onEvent("log", "INFO", "[RAW] Применение raw-конфига...")
+				wgLogf := func(msg string) {
+					b.onEvent("log", "INFO", "[RAW] "+msg)
+					b.mu.Lock()
+					if b.logFile != nil {
+						b.logFile.Write("INFO", "[RAW] "+msg)
+					}
+					b.mu.Unlock()
+				}
+				b.mu.Lock()
+				policy := b.policy
+				curCore := b.core
+				b.mu.Unlock()
+				if policy.IsSplit() {
+					wgLogf(fmt.Sprintf("Режим split: через VPN %d маршрутов из списка", len(policy.SplitCIDRs)))
+				}
+				rawTUN, err := wg.ApplyRaw(ev.Data, ev.TurnIPs, policy, wgLogf)
+				if err != nil {
+					b.onEvent("error", fmt.Sprintf("[RAW] Ошибка: %v", err))
+					break
+				}
+				if curCore == nil {
+					wg.Teardown()
+					b.onEvent("error", "[RAW] Ядро не запущено — интерфейс снят")
+					break
+				}
+				if err := curCore.AttachTUN(rawTUN); err != nil {
+					wg.Teardown()
+					b.onEvent("error", fmt.Sprintf("[RAW] Не удалось подключить TUN: %v", err))
+					break
+				}
+				b.onEvent("log", "INFO", "[RAW] Туннель активен")
+				b.onEvent("state_changed", "connected")
 			case "ready":
 				b.onEvent("log", "INFO", "[ЯДРО] Туннель готов к работе")
 			default:

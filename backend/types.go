@@ -11,6 +11,9 @@ type ConnectParams struct {
 	ObfsMode    string   `json:"obfsMode,omitempty"`   // audio/video
 	Fingerprint string   `json:"fingerprint,omitempty"` // chrome/android/ios/safari/firefox
 	TurnTCP     bool     `json:"turnTcp,omitempty"`    // использовать TCP транспорт
+	DoH         string   `json:"doh,omitempty"`        // DNS режим (пусто = yandex, см. core/dns.go)
+	NoDTLS      bool     `json:"notls,omitempty"`      // без DTLS: RTP-obfs напрямую поверх TURN
+	Raw         bool     `json:"raw,omitempty"`        // raw-IP без WireGuard (сервер -listen-raw)
 }
 
 // ProfileData — данные сервера, хранятся в ~/.config/pwdtt/servers/<name>.json.
@@ -34,6 +37,7 @@ type AppSettings struct {
 	TurnTCP      bool   `json:"turnTcp"`      // использовать TCP транспорт
 	Workers      int    `json:"workers,omitempty"`     // воркеры по умолчанию (0 = авто)
 	Fingerprint  string `json:"fingerprint,omitempty"` // chrome/android/ios/safari/firefox
+	DoH          string `json:"doh"`                   // DNS для резолва VK: yandex|cloudflare|google|doh-*|custom:IP|doh:URL ("" = yandex)
 
 	// Split tunneling (Этап 3): режим маршрутизации и глобальный список
 	// адресов, идущих через VPN в режиме split. Список общий для всех серверов.

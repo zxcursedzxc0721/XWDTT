@@ -44,7 +44,7 @@ func NewStore() *Store {
 // Если файла нет — возвращает дефолтные настройки.
 // Если obfsAccepted = false — obfsMode принудительно 'audio'.
 func (s *Store) LoadSettings() AppSettings {
-	defaults := AppSettings{AutoStart: true, ObfsMode: "audio", ObfsAccepted: false, RouteMode: RouteModeFull}
+	defaults := AppSettings{AutoStart: true, ObfsMode: "audio", ObfsAccepted: false, DoH: "yandex", RouteMode: RouteModeFull}
 	data, err := os.ReadFile(filepath.Join(s.baseDir, "config.json"))
 	if err != nil {
 		return defaults
@@ -58,6 +58,9 @@ func (s *Store) LoadSettings() AppSettings {
 	}
 	if settings.RouteMode != RouteModeSplit {
 		settings.RouteMode = RouteModeFull // пусто/мусор → full (текущее поведение)
+	}
+	if settings.DoH == "" {
+		settings.DoH = "yandex" // поведение до Этапа 4
 	}
 	return settings
 }

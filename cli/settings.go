@@ -17,7 +17,15 @@ var validFingerprints = map[string]bool{
 
 // settingsKeys — отсортированный список поддерживаемых ключей (для сообщений).
 var settingsKeys = []string{
-	"autostart", "fingerprint", "obfs", "obfs-accepted", "turn-tcp", "workers",
+	"autostart", "doh", "fingerprint", "obfs", "obfs-accepted", "turn-tcp", "workers",
+}
+
+// validDoH — допустимые значения ключа doh (см. core/dns.go и core/doh.go).
+// Произвольные значения (custom:IP, doh:URL) валидируются ядром, тут только
+// пресеты, чтобы ловить опечатки до подключения.
+var validDoH = map[string]bool{
+	"yandex": true, "cloudflare": true, "google": true,
+	"doh-yandex": true, "doh-cloudflare": true, "doh-google": true,
 }
 
 func runSettings(args []string) int {
@@ -52,6 +60,7 @@ func settingsCmd(st *backend.Store, app *backend.App, args []string) int {
 func settingsGet(st *backend.Store) {
 	s := st.LoadSettings()
 	fmt.Printf("%-14s %s\n", "autostart", onOff(s.AutoStart))
+	fmt.Printf("%-14s %s\n", "doh", orDash(s.DoH))
 	fmt.Printf("%-14s %s\n", "obfs", orDash(s.ObfsMode))
 	fmt.Printf("%-14s %s\n", "obfs-accepted", onOff(s.ObfsAccepted))
 	fmt.Printf("%-14s %s\n", "turn-tcp", onOff(s.TurnTCP))
@@ -122,6 +131,14 @@ func settingsSet(st *backend.Store, app *backend.App, key, value string) int {
 		}
 		s.Workers = n
 		return save()
+	case "doh":
+		v := strings.ToLower(strings.TrimSpace(value))
+		if !validDoH[v] && !strings.HasPrefix(v, "custom:") && !strings.HasPrefix(v, "doh:") {
+			fmt.Fprintln(os.Stderr, "значение: yandex|cloudflare|google|doh-yandex|doh-cloudflare|doh-google|custom:IP|doh:URL")
+			return 2
+		}
+		s.DoH = v
+		return save()
 	case "fingerprint":
 		if !validFingerprints[value] {
 			fmt.Fprintln(os.Stderr, "значение: chrome|firefox|safari|android|ios")
@@ -143,6 +160,8 @@ func settingsUsage() {
 
 Значения:
   autostart      on|off
+  doh            yandex|cloudflare|google|doh-yandex|doh-cloudflare|doh-google
+                 |custom:IP[,IP]|doh:https://host/dns-query
   obfs           audio|video
   obfs-accepted  on|off   (обязательно для video)
   turn-tcp       on|off

@@ -25,6 +25,8 @@ func Run(args []string) int {
 		return runRoute(args[1:])
 	case "ips":
 		return runIps(args[1:])
+	case "ping":
+		return runPing(args[1:])
 	case "pause", "resume", "disconnect":
 		// Процесс-модель: туннель живёт в процессе `connect` или интерактивного
 		// режима — из отдельного процесса им управлять нечем.
@@ -71,6 +73,7 @@ func usage() {
   pwdtt settings get|set <ключ> [значение] настройки
   pwdtt route [full|split]                 режим маршрутизации (тюнелирование)
   pwdtt ips list|add ...|rm ...            список адресов split-режима
+  pwdtt ping [имя]                          замер RTT до TURN-сервера
   pwdtt update | report | version | help
 
 Серверы:
@@ -79,6 +82,7 @@ func usage() {
   pwdtt servers show <имя>
   pwdtt servers rm <имя>
   pwdtt servers set-hashes <имя> h1,h2,...
+  pwdtt servers check <имя>                 проверить хеши VK
   pwdtt servers edit <имя> [-peer A] [-password P] [-name N] ...
 
 Настройки (pwdtt settings set <ключ> <значение>):
@@ -88,9 +92,11 @@ func usage() {
   turn-tcp on|off         TCP-транспорт TURN
   workers N               воркеров (0 = авто: max(9, хеши*9))
   fingerprint ИМЯ         chrome|firefox|safari|android|ios
+  doh РЕЖИМ               DNS: yandex|cloudflare|google|doh-*|doh:URL
 
 Флаги connect:
   -workers N  -obfs audio|video  -fingerprint ИМЯ  -turn-tcp
+  -notls (без DTLS)  -raw (raw-IP без WireGuard)
 `)
 }
 
@@ -99,10 +105,11 @@ func interactiveHelp() {
   connect <имя|wdtt://ссылка> [флаги]      подключить туннель
   disconnect                               отключить
   pause | resume                           пауза / продолжить
-  servers list|add|show|rm|set-hashes|edit  серверы
+  servers list|add|show|rm|set-hashes|check|edit  серверы
   settings get|set <ключ> <значение>       настройки
   route full|split                         режим маршрутизации
   ips list|add ...|rm ...                  список адресов split-режима
+  ping [имя]                                замер RTT до TURN-сервера
   stats                                    статистика сессии
   logs                                     последний лог-файл
   update | report | version                обновление / отчёт / версия

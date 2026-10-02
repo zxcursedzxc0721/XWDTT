@@ -32,6 +32,8 @@ func serversCmd(st *backend.Store, args []string) int {
 		return serversRm(st, args[1:])
 	case "set-hashes":
 		return serversSetHashes(st, args[1:])
+	case "check":
+		return serversCheck(st, args[1:])
 	case "edit":
 		return serversEdit(st, args[1:])
 	default:
@@ -243,6 +245,7 @@ func serversUsage() {
   show <имя>                          показать профиль
   rm <имя>                            удалить профиль
   set-hashes <имя> h1,h2,...          заменить хеши VK
+  check <имя>                         проверить хеши VK (статусы ok/captcha/dead/...)
   edit <имя> [-peer A] [-password P] [-name N] [-listen L]
         [-turn H] [-port P] [-turn-tcp] [-workers N]
 `)

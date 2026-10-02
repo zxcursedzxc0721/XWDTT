@@ -64,6 +64,8 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 	obfs := fs.String("obfs", "", "audio|video")
 	fingerprint := fs.String("fingerprint", "", "chrome|firefox|safari|android|ios")
 	turnTCP := fs.Bool("turn-tcp", false, "TCP-транспорт TURN")
+	noDTLS := fs.Bool("notls", false, "без DTLS: RTP-obfs AEAD напрямую (сервер с -listen-direct)")
+	raw := fs.Bool("raw", false, "raw-IP без WireGuard (сервер с -listen-raw)")
 
 	flagArgs, posArgs := splitArgs(args, connectValueFlags)
 	if err := fs.Parse(flagArgs); err != nil {
@@ -160,6 +162,14 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 	if fp != "" {
 		fmt.Printf("   fingerprint: %s", fp)
 	}
+	if *noDTLS || *raw {
+		fmt.Printf("   режим: ")
+		if *raw {
+			fmt.Printf("raw")
+		} else {
+			fmt.Printf("no-dtls")
+		}
+	}
 	fmt.Println()
 
 	// Права: перезапуск с UAC только после всех проверок, чтобы ошибки
@@ -179,6 +189,9 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 		ObfsMode:    obfsMode,
 		Fingerprint: fp,
 		TurnTCP:     turn,
+		DoH:         settings.DoH,
+		NoDTLS:      *noDTLS,
+		Raw:         *raw,
 	})
 	if err != nil {
 		p.errorLine(err.Error())
@@ -255,6 +268,9 @@ func connectUsage() {
   -obfs audio|video     режим обфускации
   -fingerprint ИМЯ      chrome|firefox|safari|android|ios
   -turn-tcp             TCP-транспорт TURN
+  -notls                без DTLS: RTP-obfs напрямую поверх TURN
+                        (сервер с -listen-direct)
+  -raw                  raw-IP без WireGuard (сервер с -listen-raw)
 
 Примеры:
   pwdtt connect "Мой сервер"

@@ -88,6 +88,8 @@ func dispatchInteractive(app *backend.App, p *printer, args []string) bool {
 		runRoute(args[1:])
 	case "ips":
 		ipsCmd(app.Store(), args[1:])
+	case "ping":
+		runPing(args[1:])
 	case "stats":
 		p.printSnapshot()
 	case "logs":
