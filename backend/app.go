@@ -2,57 +2,56 @@ package backend
 
 import (
 	"context"
-
-	wails "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const Version = "1.6.0"
 
-// App — главный объект приложения.
-// Wails привязывает его методы к frontend через Bind().
+// App — главный объект приложения (консольная версия, без Wails).
+// События Bridge пробрасываются в onEvent — его задаёт CLI
+// (печать в stdout с цветами и статистикой).
 type App struct {
-	ctx    context.Context
-	bridge *Bridge
-	store  *Store
+	bridge  *Bridge
+	store   *Store
+	onEvent func(name string, args ...any)
 }
 
-// NewApp создаёт App. Вызывается из main() до wails.Run().
-func NewApp() *App {
+// NewApp создаёт App. onEvent — приёмник событий ("log", "state_changed",
+// "stats", "error", "captcha_required", "event"); nil означает тихий режим.
+func NewApp(onEvent func(name string, args ...any)) *App {
+	if onEvent == nil {
+		onEvent = func(string, ...any) {}
+	}
 	return &App{
-		store: NewStore(),
+		store:   NewStore(),
+		onEvent: onEvent,
 	}
 }
 
-// ═══════════════════════════════════════════════════
-// WAILS LIFECYCLE
-// ═══════════════════════════════════════════════════
-
-// Startup вызывается Wails после создания webview.
-func (a *App) Startup(ctx context.Context) {
-	a.ctx = ctx
-
-	settings := a.store.LoadSettings()
-	a.bridge = NewBridge(ctx, a.store, a.onBridgeEvent)
-
-	if settings.AutoStart {
-		a.SetAutoStart(true)
-	}
+// Init поднимает Bridge и выполняет стартовую работу.
+// Вызывать только из команд, которым нужен мост (connect, интерактивный режим):
+// остальным командам незачем трогать маршруты и лог-файлы.
+func (a *App) Init() {
+	a.bridge = NewBridge(context.Background(), a.store, a.onEvent)
 
 	// Уборка маршрутов, оставшихся от краша прошлого запуска
+	// (на платформах без такой проблемы — no-op).
 	go CleanupStaleExcludeRoutes(func(msg string) {
-		a.onBridgeEvent("log", "INFO", "[WG] "+msg)
+		a.onEvent("log", "INFO", "[WG] "+msg)
 	})
 }
 
-// Shutdown вызывается Wails при закрытии приложения.
-func (a *App) Shutdown(ctx context.Context) {
+// Close отключает туннель и освобождает ресурсы. Вызывать defer'ом после Init.
+func (a *App) Close() {
 	if a.bridge != nil {
 		a.bridge.Disconnect()
 	}
 }
 
+// Store возвращает хранилище (профили/настройки) — используется CLI напрямую.
+func (a *App) Store() *Store { return a.store }
+
 // ═══════════════════════════════════════════════════
-// WAILS BINDINGS
+// CONNECTION
 // ═══════════════════════════════════════════════════
 
 func (a *App) Connect(params ConnectParams) error {
@@ -61,6 +60,14 @@ func (a *App) Connect(params ConnectParams) error {
 
 func (a *App) Disconnect() {
 	a.bridge.Disconnect()
+}
+
+func (a *App) Pause() {
+	a.bridge.Pause()
+}
+
+func (a *App) Resume() {
+	a.bridge.Resume()
 }
 
 func (a *App) IsRunning() bool {
@@ -132,12 +139,4 @@ func (a *App) CheckUpdate() *UpdateInfo {
 		return &UpdateInfo{Available: false}
 	}
 	return info
-}
-
-// ═══════════════════════════════════════════════════
-// INTERNAL
-// ═══════════════════════════════════════════════════
-
-func (a *App) onBridgeEvent(name string, args ...any) {
-	wails.EventsEmit(a.ctx, name, args...)
 }

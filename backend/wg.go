@@ -37,7 +37,7 @@ type WG struct {
 
 	// stateMu сериализует Apply/Teardown и защищает поля ниже:
 	// Apply вызывается из горутины forwardEvents, Teardown — из потока
-	// Wails-биндинга (Disconnect), одновременный доступ = гонка.
+	// команды CLI (disconnect/Ctrl+C), одновременный доступ = гонка.
 	stateMu sync.Mutex
 
 	// Windows/macOS userspace-specific

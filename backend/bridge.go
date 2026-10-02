@@ -120,6 +120,26 @@ func (b *Bridge) IsRunning() bool {
 	return b.running
 }
 
+// Pause приостанавливает воркеры: туннель жив, трафик не идёт.
+func (b *Bridge) Pause() {
+	b.mu.Lock()
+	c := b.core
+	b.mu.Unlock()
+	if c != nil {
+		c.Pause()
+	}
+}
+
+// Resume возобновляет воркеры после Pause.
+func (b *Bridge) Resume() {
+	b.mu.Lock()
+	c := b.core
+	b.mu.Unlock()
+	if c != nil {
+		c.Resume()
+	}
+}
+
 func (b *Bridge) SendCaptchaResult(token string) {
 	b.mu.Lock()
 	c := b.core
@@ -129,7 +149,8 @@ func (b *Bridge) SendCaptchaResult(token string) {
 	}
 }
 
-// forwardEvents читает канал событий ядра и пробрасывает в Wails.
+// forwardEvents читает канал событий ядра и пробрасывает в onEvent
+// (консольная печать со статусом/логами/статистикой).
 // sessID — поколение сессии, на которую запущен этот горутин: если к моменту
 // его завершения уже начата новая сессия (быстрый Disconnect → Connect),
 // устаревший горутин не имеет права трогать состояние Bridge.

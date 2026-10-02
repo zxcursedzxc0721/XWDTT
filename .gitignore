@@ -1,10 +1,8 @@
 # Build output
 /build/bin/
 
-# Frontend
-/frontend/node_modules/
-/frontend/dist/
-/frontend/dist-ssr/
+# Соседний репозиторий Android-версии (источник кода для переноса, не наш git)
+/proxy-turn-vk-android/
 
 # Go
 *.exe
@@ -16,7 +14,7 @@
 *.out
 *.prof
 
-# Wails build artifacts
+# Resource artifacts (go-winres/rsrc)
 *.syso
 *.rc
 
