@@ -52,17 +52,17 @@ type WG struct {
 
 type wgLogFunc func(msg string)
 
-func (w *WG) Apply(conf string, turnIPs []string, logf wgLogFunc) error {
+func (w *WG) Apply(conf string, turnIPs []string, policy RoutePolicy, logf wgLogFunc) error {
 	if logf == nil {
 		logf = func(msg string) { log.Printf("[WG] %s", msg) }
 	}
 	switch runtime.GOOS {
 	case "linux":
-		return w.applyLinux(conf, turnIPs, logf)
+		return w.applyLinux(conf, turnIPs, policy, logf)
 	case "windows":
-		return w.applyWindows(conf, turnIPs, logf)
+		return w.applyWindows(conf, turnIPs, policy, logf)
 	case "darwin":
-		return w.applyDarwin(conf, turnIPs, logf)
+		return w.applyDarwin(conf, turnIPs, policy, logf)
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
@@ -148,13 +148,15 @@ func parseWGConfig(conf string) (addr, mtu string, allowedIPs []string, wgConf s
 // LINUX — ip/wg команды через sudo
 // ═══════════════════════════════════════════════════
 
-func (w *WG) applyLinux(conf string, turnIPs []string, logf wgLogFunc) error {
+func (w *WG) applyLinux(conf string, turnIPs []string, policy RoutePolicy, logf wgLogFunc) error {
 	w.teardownLinux()
 
 	addr, mtu, allowedIPs, wgConf := parseWGConfig(conf)
 	if addr == "" {
 		return fmt.Errorf("Address not found in wg config")
 	}
+
+	plan := BuildRoutePlan(allowedIPs, turnIPs, policy)
 
 	tmp, err := os.CreateTemp("", "wg-turn-*.conf")
 	if err != nil {
@@ -190,23 +192,13 @@ func (w *WG) applyLinux(conf string, turnIPs []string, logf wgLogFunc) error {
 	var routes []string
 	gw := defaultGatewayLinux()
 	if gw != "" {
-		for _, ip := range turnIPs {
-			if runCmdLinux("ip", "route", "add", ip+"/32", "via", gw) == nil {
-				routes = append(routes, ip+"/32")
-			}
-		}
-		for _, cidr := range vkExcludeCIDRs {
+		for _, cidr := range plan.ExcludeRoutes {
 			if runCmdLinux("ip", "route", "add", cidr, "via", gw) == nil {
 				routes = append(routes, cidr)
 			}
 		}
-		for _, dns := range localDNSServers() {
-			if runCmdLinux("ip", "route", "add", dns+"/32", "via", gw) == nil {
-				routes = append(routes, dns+"/32")
-			}
-		}
 	}
-	for _, cidr := range allowedIPs {
+	for _, cidr := range plan.TunnelRoutes {
 		if runCmdLinux("ip", "route", "add", cidr, "dev", wgIface) == nil {
 			routes = append(routes, "dev:"+cidr)
 		}
@@ -287,7 +279,7 @@ var wintunDLLData []byte
 // InitWintun устанавливает wintun.dll (вызывается из main_windows.go).
 func InitWintun(dll []byte) { wintunDLLData = dll }
 
-func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
+func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, logf wgLogFunc) error {
 	w.stateMu.Lock()
 	defer w.stateMu.Unlock()
 	w.teardownWindowsLocked()
@@ -300,6 +292,8 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 	if addr == "" {
 		return fmt.Errorf("Address not found in wg config")
 	}
+
+	plan := BuildRoutePlan(allowedIPs, turnIPs, policy)
 
 	mtu := 1300
 	if mtuStr != "" {
@@ -343,26 +337,29 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 		}
 	}
 
-	// Set low metric on WG interface so it wins over physical default route
-	_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
-		"interface="+wgIface, "metric=1")
-
-	// Get physical gateway and raise its metric so WG takes priority
+	// Split: дефолтный маршрут не перехватываем — интерфейс с низкой метрикой
+	// и поднятый физический gateway с метрикой 9999 уводили бы весь трафик
+	// в туннель, минуя список.
 	gw := defaultGatewayWindows()
-	logf(fmt.Sprintf("Default gateway: %s", gw))
-	if gw != "" {
-		// Save original metric for restore on teardown
-		w.physGW = gw
-		_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
+	if plan.HijackDefault {
+		// Set low metric on WG interface so it wins over physical default route
+		_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
+			"interface="+wgIface, "metric=1")
+
+		// Get physical gateway and raise its metric so WG takes priority
+		logf(fmt.Sprintf("Default gateway: %s", gw))
+		if gw != "" {
+			// Save original metric for restore on teardown
+			w.physGW = gw
+			_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
+		}
 	}
 
 	// Exclude routes — VK IPs, DNS, etc go via physical gateway (bypass tunnel)
+	// (в split список пуст: остальное и так идёт напрямую)
 	var excludes []string
 	if gw != "" {
-		for _, ip := range turnIPs {
-			excludes = append(excludes, ip+"/32")
-		}
-		excludes = append(excludes, vkExcludeCIDRs...)
+		excludes = plan.ExcludeRoutes
 		for _, cidr := range excludes {
 			ip, mask, err := parseCIDR(cidr)
 			if err != nil {
@@ -373,9 +370,9 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 	}
 	w.activeExcludeRoutes = excludes
 
-	// Add AllowedIPs routes via the WG interface
+	// Add routes via the WG interface (в split — только адреса списка)
 	var tunnelRoutes []string
-	for _, cidr := range allowedIPs {
+	for _, cidr := range plan.TunnelRoutes {
 		if err := runCmdWindows("netsh", "interface", "ip", "add", "route", cidr, wgIface); err != nil {
 			logf(fmt.Sprintf("netsh add route %s failed: %v", cidr, err))
 		}
@@ -383,7 +380,7 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 	}
 	w.activeRoutes = tunnelRoutes
 
-	logf(fmt.Sprintf("Туннель %s поднят, AllowedIPs: %v", wgIface, tunnelRoutes))
+	logf(fmt.Sprintf("Туннель %s поднят, маршруты через него: %v", wgIface, tunnelRoutes))
 	return nil
 }
 

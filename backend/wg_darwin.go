@@ -47,7 +47,7 @@ type wgHelperMsg struct {
 // APP SIDE
 // ═══════════════════════════════════════════════════
 
-func (w *WG) applyDarwin(confText string, turnIPs []string, logf wgLogFunc) error {
+func (w *WG) applyDarwin(confText string, turnIPs []string, policy RoutePolicy, logf wgLogFunc) error {
 	w.teardownDarwin()
 
 	addr, mtuStr, allowedIPs, wgConf := parseWGConfig(confText)
@@ -59,21 +59,18 @@ func (w *WG) applyDarwin(confText string, turnIPs []string, logf wgLogFunc) erro
 		fmt.Sscanf(mtuStr, "%d", &mtu)
 	}
 
+	plan := BuildRoutePlan(allowedIPs, turnIPs, policy)
+
 	// Exclude-маршруты — через физический gateway, мимо туннеля
-	var excludes []string
-	for _, ip := range turnIPs {
-		excludes = append(excludes, ip+"/32")
-	}
-	excludes = append(excludes, vkExcludeCIDRs...)
-	for _, dns := range localDNSServers() {
-		excludes = append(excludes, dns+"/32")
-	}
+	// (в split пусто: остальное и так идёт напрямую)
+	excludes := plan.ExcludeRoutes
 
 	// Туннельные маршруты: полный дефолт заменяем на split-default,
-	// чтобы не трогать физический default route
+	// чтобы не трогать физический default route. В split 0.0.0.0/0 из
+	// пользовательского списка НЕ разворачиваем (см. план, п. 3.4).
 	var tunnels []string
-	for _, cidr := range allowedIPs {
-		if cidr == "0.0.0.0/0" {
+	for _, cidr := range plan.TunnelRoutes {
+		if !policy.IsSplit() && cidr == "0.0.0.0/0" {
 			tunnels = append(tunnels, "0.0.0.0/1", "128.0.0.0/1")
 		} else {
 			tunnels = append(tunnels, cidr)

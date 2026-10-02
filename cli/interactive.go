@@ -84,6 +84,10 @@ func dispatchInteractive(app *backend.App, p *printer, args []string) bool {
 		serversCmd(app.Store(), args[1:])
 	case "settings":
 		settingsCmd(app.Store(), app, args[1:])
+	case "route":
+		runRoute(args[1:])
+	case "ips":
+		ipsCmd(app.Store(), args[1:])
 	case "stats":
 		p.printSnapshot()
 	case "logs":

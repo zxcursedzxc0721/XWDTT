@@ -19,6 +19,11 @@ type Bridge struct {
 	running bool
 	logFile *LogFile // полный лог сессии
 	session uint64   // номер сессии; stale forwardEvents не должен трогать новую
+
+	// policy — маршрутизация текущей сессии (Этап 3). Строится в Connect
+	// (резолв split-доменов — заранее, пока туннель не поднят), применяется
+	// в обработчике wg_config.
+	policy RoutePolicy
 }
 
 func NewBridge(ctx context.Context, store *Store, onEvent func(string, ...any)) *Bridge {
@@ -57,6 +62,10 @@ func (b *Bridge) Connect(params ConnectParams) error {
 		workers = 24
 	}
 
+	// Маршрутизация сессии: режим + резолв split-доменов (пока туннель
+	// не поднят — DNS работает напрямую; при сбое берётся stale-кэш).
+	policy := b.buildRoutePolicy()
+
 	deviceID := params.DeviceID
 	if deviceID == "" {
 		deviceID = "unknown"
@@ -78,6 +87,7 @@ func (b *Bridge) Connect(params ConnectParams) error {
 	
 	b.mu.Lock()
 	b.core = c
+	b.policy = policy
 	b.logFile = b.store.OpenLogFile()
 	b.mu.Unlock()
 
@@ -98,6 +108,31 @@ func (b *Bridge) Connect(params ConnectParams) error {
 
 	go b.forwardEvents(events, sessID)
 	return nil
+}
+
+// buildRoutePolicy строит политику маршрутизации для новой сессии:
+// режим из настроек, для split — предварительный резолв доменов (лог идёт
+// в onEvent, читаемый пользователем). Вызывается из Connect до старта ядра.
+func (b *Bridge) buildRoutePolicy() RoutePolicy {
+	settings := b.store.LoadSettings()
+	policy := RoutePolicy{Mode: settings.RouteMode}
+	if !policy.IsSplit() {
+		return policy
+	}
+
+	splitLog := func(msg string) { b.onEvent("log", "INFO", "[WG] "+msg) }
+	if len(settings.SplitRoutes) == 0 {
+		splitLog("режим split включён, но список пуст — через VPN не пойдёт ничего. Добавьте адреса: pwdtt ips add <ip|домен>")
+		return policy
+	}
+	cidrs := ResolveSplitRoutes(settings.SplitRoutes, splitLog)
+	if len(cidrs) == 0 {
+		splitLog("ни один адрес списка не разрешился — через VPN не пойдёт ничего")
+		return policy
+	}
+	policy.SplitCIDRs = cidrs
+	splitLog(fmt.Sprintf("список разрешён: %d из %d записей", len(cidrs), len(settings.SplitRoutes)))
+	return policy
 }
 
 func (b *Bridge) Disconnect() {
@@ -200,7 +235,13 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 					}
 					b.mu.Unlock()
 				}
-				if err := wg.Apply(ev.Data, ev.TurnIPs, wgLogf); err != nil {
+				b.mu.Lock()
+				policy := b.policy
+				b.mu.Unlock()
+				if policy.IsSplit() {
+					wgLogf(fmt.Sprintf("Режим split: через VPN %d маршрутов из списка", len(policy.SplitCIDRs)))
+				}
+				if err := wg.Apply(ev.Data, ev.TurnIPs, policy, wgLogf); err != nil {
 					b.onEvent("error", fmt.Sprintf("[WG] Ошибка: %v", err))
 				} else {
 					b.onEvent("log", "INFO", "[WG] Конфиг применён, туннель активен")

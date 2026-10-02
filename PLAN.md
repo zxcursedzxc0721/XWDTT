@@ -6,7 +6,7 @@
 >
 > **Язык общения с пользователем:** русский.
 >
-> **Статус работ:** Этапы 1–2 завершены (02.10.2026). Продолжать с Этапа 3.
+> **Статус работ:** Этапы 1–3 завершены (02.10.2026). Продолжать с Этапа 4.
 
 ---
 
@@ -108,7 +108,18 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
   лог `[BRIDGE] WG интерфейс снят` при пустом `Disconnect`; юнит-тесты `tests/cli_test.go`
   (парсер ссылок, SplitCommandLine); `go build` (windows/linux/darwin amd64) +
   `go vet` + `go test ./...` зелёные; smoke-тесты CLI/интерактива пройдены.
-- [ ] **Этап 3.** Split tunneling (белый список + резолв доменов)
+- [x] **Этап 3.** Split tunneling — **ГОТОВО (02.10.2026):** `AppSettings.RouteMode/SplitRoutes`
+  (дефолт full, мусор → full); `backend/routeplan.go` — чистый `BuildRoutePlan` (full:
+  байт-в-байт как раньше + dedupe; split: только список, без excludes и без hijack,
+  `0.0.0.0/0` сервера не участвует); `backend/splitresolve.go` — `NormalizeSplitEntry`
+  (IP→/32, CIDR→нормализация сети, URL→хост, wildcard, IPv6 отвергается) + резолв доменов
+  с кэшем `dnscache.json` (TTL 10 мин, stale-fallback, лимиты 100 записей/400 маршрутов);
+  `wg.Apply(conf, turnIPs, policy, logf)` — policy прокинут во все три apply (Windows:
+  метрика/gw/excludes только в full; Darwin: 0.0.0.0/0 не разворачивается в split);
+  Bridge: `buildRoutePolicy()` в Connect (резолв до старта ядра), применяется в `wg_config`;
+  CLI: `pwdtt route [full|split]`, `pwdtt ips list|add|rm`; 13 тестов
+  (`tests/routeplan_test.go`); `go build` (3 ОС) + `go vet` + `go test ./...` зелёные;
+  smoke-тест команд пройден.
 - [ ] **Этап 4.** Обновление ядра из qWDTT (4.1 скорость, 4.2 надёжность, 4.3 DoH+replay, 4.4 RAW/NoDTLS, 4.5 CLI-фичи)
 - [ ] **Этап 5.** Тесты, CI, README
 

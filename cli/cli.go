@@ -21,6 +21,10 @@ func Run(args []string) int {
 		return runServers(args[1:])
 	case "settings":
 		return runSettings(args[1:])
+	case "route":
+		return runRoute(args[1:])
+	case "ips":
+		return runIps(args[1:])
 	case "pause", "resume", "disconnect":
 		// Процесс-модель: туннель живёт в процессе `connect` или интерактивного
 		// режима — из отдельного процесса им управлять нечем.
@@ -65,6 +69,8 @@ func usage() {
   pwdtt connect [флаги] <имя|wdtt://ссылка>  подключить (Ctrl+C — отключить)
   pwdtt servers <подкоманда>               управление серверами
   pwdtt settings get|set <ключ> [значение] настройки
+  pwdtt route [full|split]                 режим маршрутизации (тюнелирование)
+  pwdtt ips list|add ...|rm ...            список адресов split-режима
   pwdtt update | report | version | help
 
 Серверы:
@@ -95,6 +101,8 @@ func interactiveHelp() {
   pause | resume                           пауза / продолжить
   servers list|add|show|rm|set-hashes|edit  серверы
   settings get|set <ключ> <значение>       настройки
+  route full|split                         режим маршрутизации
+  ips list|add ...|rm ...                  список адресов split-режима
   stats                                    статистика сессии
   logs                                     последний лог-файл
   update | report | version                обновление / отчёт / версия

@@ -4,7 +4,7 @@ package backend
 
 import "fmt"
 
-func (w *WG) applyDarwin(conf string, turnIPs []string, logf wgLogFunc) error {
+func (w *WG) applyDarwin(conf string, turnIPs []string, policy RoutePolicy, logf wgLogFunc) error {
     return fmt.Errorf("darwin not supported on this platform")
 }
 

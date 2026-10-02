@@ -34,4 +34,9 @@ type AppSettings struct {
 	TurnTCP      bool   `json:"turnTcp"`      // использовать TCP транспорт
 	Workers      int    `json:"workers,omitempty"`     // воркеры по умолчанию (0 = авто)
 	Fingerprint  string `json:"fingerprint,omitempty"` // chrome/android/ios/safari/firefox
+
+	// Split tunneling (Этап 3): режим маршрутизации и глобальный список
+	// адресов, идущих через VPN в режиме split. Список общий для всех серверов.
+	RouteMode   string   `json:"routeMode"`   // RouteModeFull (по умолчанию) | RouteModeSplit
+	SplitRoutes []string `json:"splitRoutes"` // IP/CIDR/домены, нормализованы (см. NormalizeSplitEntry)
 }
