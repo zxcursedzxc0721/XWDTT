@@ -19,10 +19,15 @@ import (
 // кэшем на диск (dnscache.json), TTL 10 минут, при сбое DNS берётся stale из
 // кэша (референс: BypassRoutes.kt resolveHosts, строки 304–338).
 
-// Лимиты — из референса: список не должен раздуваться до нечитаемости.
+// Лимиты. Стартовые значения (100 записей / 400 префиксов — как MAX_RULES и
+// MAX_EXCLUDE_PREFIXES в BypassRoutes.kt) были рассчитаны на ручной ввод и
+// поштучный netsh. Импорт больших списков ip (тысячи адресов из ip-list.json)
+// потребовал поднять оба: маршруты применяются батчем одним процессом netsh -f
+// (см. applyTunnelRoutes — ~4000 команд/сек), поэтому ограничение теперь
+// только по разумному размеру списка, а не по скорости ОС.
 const (
-	maxSplitRules       = 100  // записей в списке (MAX_RULES в BypassRoutes.kt)
-	maxSplitPrefixes    = 400  // /32 после резолва (MAX_EXCLUDE_PREFIXES)
+	MaxSplitRules    = 65536 // записей в списке (лимит CLI ips add/import)
+	maxSplitPrefixes = 65536 // /32 после резолва доменов
 	splitResolveTTL     = 10 * time.Minute
 	splitResolveTimeout = 5 * time.Second
 )
@@ -175,9 +180,9 @@ func ResolveSplitRoutes(entries []string, logf func(string)) []string {
 	if len(entries) == 0 {
 		return nil
 	}
-	if len(entries) > maxSplitRules {
-		logf2(fmt.Sprintf("split: список длиннее %d записей, хвост игнорируется", maxSplitRules))
-		entries = entries[:maxSplitRules]
+	if len(entries) > MaxSplitRules {
+		logf2(fmt.Sprintf("split: список длиннее %d записей, хвост игнорируется", MaxSplitRules))
+		entries = entries[:MaxSplitRules]
 	}
 
 	cachePath := filepath.Join(configDir(), "dnscache.json")

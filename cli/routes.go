@@ -64,6 +64,7 @@ func printRoute(s backend.AppSettings) {
 //
 //	pwdtt ips list
 //	pwdtt ips add <ip|cidr|домен>...
+//	pwdtt ips import <файл.json>
 //	pwdtt ips rm <ip|cidr|домен>...
 func runIps(args []string) int {
 	return ipsCmd(backend.NewStore(), args)
@@ -81,6 +82,8 @@ func ipsCmd(st *backend.Store, args []string) int {
 		return ipsList(st)
 	case "add":
 		return ipsAdd(st, args[1:])
+	case "import":
+		return ipsImport(st, args[1:])
 	case "rm", "delete", "remove":
 		return ipsRm(st, args[1:])
 	default:
@@ -137,8 +140,8 @@ func ipsAdd(st *backend.Store, args []string) int {
 			fmt.Printf("уже в списке: %s\n", entry)
 			continue
 		}
-		if len(s.SplitRoutes) >= 100 {
-			fmt.Fprintf(os.Stderr, "список полон (максимум 100 записей)\n")
+		if len(s.SplitRoutes) >= backend.MaxSplitRules {
+			fmt.Fprintf(os.Stderr, "список полон (максимум %d записей)\n", backend.MaxSplitRules)
 			break
 		}
 		s.SplitRoutes = append(s.SplitRoutes, entry)
@@ -151,6 +154,62 @@ func ipsAdd(st *backend.Store, args []string) int {
 		if warned > 0 {
 			return 1
 		}
+		return 0
+	}
+	if err := st.SaveSettings(s); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+	printRouteHint(s)
+	return 0
+}
+
+// ipsImport — пакетный импорт адресов из JSON-файла
+// ({"сервис": ["ip", ...]} или просто ["ip", ...]).
+//
+// В отличие от ips add не печатает построчно (файлы на тысячи записей),
+// а показывает сводку.
+func ipsImport(st *backend.Store, args []string) int {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "использование: pwdtt ips import <файл.json>")
+		return 2
+	}
+	data, err := os.ReadFile(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "не удалось прочитать файл: %v\n", err)
+		return 1
+	}
+	entries, skipped, err := backend.ParseSplitIPList(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
+	if skipped > 0 {
+		fmt.Printf("пропущено некорректных записей: %d\n", skipped)
+	}
+
+	s := st.LoadSettings()
+	existing := make(map[string]bool, len(s.SplitRoutes))
+	for _, e := range s.SplitRoutes {
+		existing[e] = true
+	}
+	added := 0
+	for _, entry := range entries {
+		if existing[entry] {
+			continue
+		}
+		if len(s.SplitRoutes) >= backend.MaxSplitRules {
+			fmt.Fprintf(os.Stderr, "список полон (максимум %d записей), остальное не добавлено\n", backend.MaxSplitRules)
+			break
+		}
+		s.SplitRoutes = append(s.SplitRoutes, entry)
+		existing[entry] = true
+		added++
+	}
+
+	fmt.Printf("в файле: %d записей (%d уникальных), добавлено новых: %d, всего в списке: %d\n",
+		len(entries)+skipped, len(entries), added, len(s.SplitRoutes))
+	if added == 0 {
 		return 0
 	}
 	if err := st.SaveSettings(s); err != nil {
@@ -223,10 +282,12 @@ func ipsUsage() {
 
   list                    показать список
   add <ip|cidr|домен>...  добавить (домены резолвятся при подключении)
+  import <файл.json>      импортировать список из JSON-файла
   rm <ip|cidr|домен>...   удалить
 
 Примеры:
   pwdtt ips add 1.2.3.4 10.0.0.0/8 vk.com
+  pwdtt ips import "C:\Downloads\ip-list.json"
   pwdtt route split
 `)
 }

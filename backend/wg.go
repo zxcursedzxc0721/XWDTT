@@ -371,16 +371,10 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 	w.activeExcludeRoutes = excludes
 
 	// Add routes via the WG interface (в split — только адреса списка)
-	var tunnelRoutes []string
-	for _, cidr := range plan.TunnelRoutes {
-		if err := runCmdWindows("netsh", "interface", "ip", "add", "route", cidr, wgIface); err != nil {
-			logf(fmt.Sprintf("netsh add route %s failed: %v", cidr, err))
-		}
-		tunnelRoutes = append(tunnelRoutes, cidr)
-	}
+	tunnelRoutes := applyTunnelRoutes(plan.TunnelRoutes, wgIface, logf)
 	w.activeRoutes = tunnelRoutes
 
-	logf(fmt.Sprintf("Туннель %s поднят, маршруты через него: %v", wgIface, tunnelRoutes))
+	logf(fmt.Sprintf("Туннель %s поднят, маршруты через него: %s", wgIface, routeSummary(tunnelRoutes)))
 	return nil
 }
 
@@ -411,9 +405,7 @@ func (w *WG) teardownWindowsLocked() {
 	w.activeExcludeRoutes = nil
 
 	// Delete tunnel routes explicitly to prevent Windows routing table corruption
-	for _, cidr := range w.activeRoutes {
-		_ = runCmdWindows("netsh", "interface", "ip", "delete", "route", cidr, wgIface)
-	}
+	deleteTunnelRoutes(w.activeRoutes, wgIface)
 	w.activeRoutes = nil
 
 	// Close WireGuard device

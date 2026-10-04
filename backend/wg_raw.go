@@ -149,17 +149,10 @@ func (w *WG) ApplyRaw(rawConf string, turnIPs []string, policy RoutePolicy, logf
 	w.activeExcludeRoutes = excludes
 
 	// Маршруты через интерфейс: full — 0.0.0.0/0, split — адреса списка.
-	var tunnelRoutes []string
-	for _, cidr := range plan.TunnelRoutes {
-		if routeErr := runCmdWindows("netsh", "interface", "ip", "add", "route", cidr, wgIface); routeErr != nil {
-			logf(fmt.Sprintf("netsh add route %s failed: %v", cidr, routeErr))
-			continue
-		}
-		tunnelRoutes = append(tunnelRoutes, cidr)
-	}
+	tunnelRoutes := applyTunnelRoutes(plan.TunnelRoutes, wgIface, logf)
 	w.activeRoutes = tunnelRoutes
 
-	logf(fmt.Sprintf("Raw туннель %s поднят (ip=%s), маршруты через него: %v", wgIface, ip, tunnelRoutes))
+	logf(fmt.Sprintf("Raw туннель %s поднят (ip=%s), маршруты через него: %s", wgIface, ip, routeSummary(tunnelRoutes)))
 	return newRawTunAdapter(tunDev), nil
 }
 
