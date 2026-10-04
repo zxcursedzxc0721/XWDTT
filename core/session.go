@@ -541,6 +541,9 @@ func RunSession(
 				}
 			}
 			log.Printf("[ВОРКЕР #%d] Ошибка RAW-конфига: %v", sessionID, confErr)
+			if strings.Contains(errStr, "i/o timeout") {
+				log.Printf("[ВОРКЕР #%d] [ПОДСКАЗКА] сервер не ответил на GETCONF_RAW — туннель НЕ поднят (IP не изменится). Обычный режим работает без флагов; -raw требует, чтобы сервер был запущен с -listen-raw", sessionID)
+			}
 		} else if ip != "" {
 			conf := fmt.Sprintf("RAWCONF:%s|%s|%d", ip, dnsCSV, mtu)
 			select {
@@ -566,6 +569,9 @@ func RunSession(
 				}
 			}
 			log.Printf("[ВОРКЕР #%d] Ошибка конфига: %v", sessionID, confErr)
+			if strings.Contains(errStr, "i/o timeout") {
+				log.Printf("[ВОРКЕР #%d] [ПОДСКАЗКА] сервер не ответил на GETCONF — туннель НЕ поднят (IP не изменится). Обычный режим работает без флагов; -notls/-raw требует, чтобы сервер был запущен с -listen-direct/-listen-raw", sessionID)
+			}
 		} else if conf != "" {
 			select {
 			case configCh <- conf:

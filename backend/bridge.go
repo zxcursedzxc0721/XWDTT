@@ -289,7 +289,10 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 				b.onEvent("log", "INFO", "[RAW] Туннель активен")
 				b.onEvent("state_changed", "connected")
 			case "ready":
-				b.onEvent("log", "INFO", "[ЯДРО] Туннель готов к работе")
+				// Не «туннель готов»: ready шлётся после авторизации воркеров,
+				// ещё ДО получения конфига. Настоящая готовность — событие
+				// state "connected" после применения конфига (wg_config/raw_config).
+				b.onEvent("log", "INFO", "[ЯДРО] Воркеры авторизованы, жду конфиг от сервера...")
 			default:
 				b.onEvent("event", ev.Name)
 			}
