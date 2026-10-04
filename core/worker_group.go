@@ -388,6 +388,36 @@ func WorkerGroup(
 						}
 						continue
 
+					case SessionErrorRetry:
+						// Временный сетевой сбой (например "all retransmissions
+						// failed"): НЕ убиваем воркера — повторяем с паузой,
+						// адрес банится только после maxAttemptsPerAddress
+						// неудач подряд (мобильный group.go делает так же).
+						addressAttempts++
+						if addressAttempts >= maxAttemptsPerAddress {
+							if sessErr.Address != "" {
+								GlobalBlacklist.Ban(sessErr.Address)
+								log.Printf("[ВОРКЕР #%d] TURN-адрес %s забанен после %d неудачных попыток: %v",
+									wid, sessErr.Address, addressAttempts, sessErr.Err)
+							}
+							addressAttempts = 0
+							select {
+							case <-time.After(sleepAfterAddressDead):
+							case <-ctx.Done():
+								return
+							}
+							continue
+						}
+						retryDelay := time.Duration(3+rand.Intn(5)) * time.Second
+						log.Printf("[ВОРКЕР #%d] Временная ошибка (попытка %d/%d), повтор через %v: %v",
+							wid, addressAttempts, maxAttemptsPerAddress, retryDelay, sessErr.Err)
+						select {
+						case <-time.After(retryDelay):
+						case <-ctx.Done():
+							return
+						}
+						continue
+
 					case SessionErrorFatal:
 						// Фатальная ошибка — выходим
 						log.Printf("[ВОРКЕР #%d] Фатальная ошибка: %v", wid, sessErr.Err)

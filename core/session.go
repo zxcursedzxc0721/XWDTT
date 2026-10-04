@@ -82,6 +82,10 @@ const (
 	SessionErrorWrapTimeout SessionErrorType = "WRAP_TIMEOUT"
 	// AUTH — TURN отклонил креды (401/протухшие); нужно обновить креды и повторить
 	SessionErrorAuth SessionErrorType = "AUTH"
+	// RETRY — временная сетевая ошибка (пакет не дошёл/не ответил,
+	// например "all retransmissions failed"): воркер повторяет с задержкой,
+	// не умирает; адрес банится только после maxAttemptsPerAddress попыток.
+	SessionErrorRetry SessionErrorType = "RETRY"
 	// FATAL — невосстановимая ошибка (FATAL_AUTH, хеш мёртв и т.д.)
 	SessionErrorFatal SessionErrorType = "FATAL"
 )
@@ -101,6 +105,38 @@ func (e *SessionError) Error() string {
 }
 
 func (e *SessionError) Unwrap() error { return e.Err }
+
+// classifyAllocateError определяет тип ошибки TURN Allocate (см. RunSession).
+//
+// Принцип (как в мобильном go_client/group.go): смерть воркера — крайняя
+// мера, только для явно невосстановимых ситуаций. Всё, что похоже на
+// сетевой сбой или проблему конкретного TURN-адреса, должно вести к ретраю
+// или бану адреса, а НЕ к завершению воркера:
+//
+//	квота (486/quota)        → ADDRESS_DEAD: бан адреса 5 мин, берём следующий
+//	unreachable/timeout/...  → ADDRESS_DEAD: то же
+//	"all retransmissions failed", прочие сетевые сбои → RETRY: повтор через
+//	                                          паузу, бан после 3 неудач подряд
+func classifyAllocateError(err error) SessionErrorType {
+	if err == nil {
+		return ""
+	}
+	errLower := strings.ToLower(err.Error())
+
+	switch {
+	case strings.Contains(errLower, "quota"),
+		strings.Contains(errLower, "486"),
+		strings.Contains(errLower, "unreachable"),
+		strings.Contains(errLower, "timeout"),
+		strings.Contains(errLower, "connection refused"),
+		strings.Contains(errLower, "no route to host"):
+		return SessionErrorAddressDead
+	default:
+		// "all retransmissions failed" и прочие временные сбои: воркер
+		// повторяет (worker_group), адрес банится после maxAttemptsPerAddress.
+		return SessionErrorRetry
+	}
+}
 
 // obfsDirectConn — net.Conn поверх TURN relay БЕЗ DTLS.
 //
@@ -278,38 +314,19 @@ func RunSession(
 
 	relay, err := tc.Allocate()
 	if err != nil {
-		errStr := err.Error()
-		errLower := strings.ToLower(errStr)
-
-		// Проверяем на ошибки авторизации (кеш кредов)
+		// Классификация — в classifyAllocateError (тестируется отдельно).
+		// Креды протухли: НЕ фатально — воркер обновит их через GetCreds
+		// (кеш уже инвалидирован) и повторит.
 		if isAuthError(err) {
 			handleAuthError(cacheStreamID)
-			// Креды протухли — это НЕ фатальная ошибка: воркер обновит
-			// креды через GetCreds (кеш уже инвалидирован выше) и повторит
 			return false, &SessionError{
 				Type:    SessionErrorAuth,
 				Address: turnAddr,
 				Err:     fmt.Errorf("TURN Allocate: %w", err),
 			}
 		}
-
-		// Квота, unreachable, timeout — всё это "адрес мёртв"
-		if strings.Contains(errLower, "quota") ||
-			strings.Contains(errLower, "486") ||
-			strings.Contains(errLower, "unreachable") ||
-			strings.Contains(errLower, "timeout") ||
-			strings.Contains(errLower, "connection refused") ||
-			strings.Contains(errLower, "no route to host") {
-			return false, &SessionError{
-				Type:    SessionErrorAddressDead,
-				Address: turnAddr,
-				Err:     fmt.Errorf("TURN Allocate: %w", err),
-			}
-		}
-
-		// Остальные ошибки — фатальные
 		return false, &SessionError{
-			Type:    SessionErrorFatal,
+			Type:    classifyAllocateError(err),
 			Address: turnAddr,
 			Err:     fmt.Errorf("TURN Allocate: %w", err),
 		}
