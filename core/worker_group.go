@@ -388,6 +388,22 @@ func WorkerGroup(
 						}
 						continue
 
+					case SessionErrorQuota:
+						// Квота аллокаций (486) — лимит АККАУНТА VK на этом
+						// TURN-сервере, адрес при этом живой (mobile group.go:
+						// quotaRetry → пауза 30–60с, без бана). Банить глобально
+						// нельзя: GlobalBlacklist общий для всех групп —
+						// один исчерпавший квоту хеш «убил» бы адрес для остальных.
+						log.Printf("[ВОРКЕР #%d] [TURN] Квота relay исчерпана (один аккаунт VK = мало слотов), ждём 30-60с: %v",
+							wid, sessErr.Err)
+						quotaDelay := time.Duration(30+rand.Intn(31)) * time.Second
+						select {
+						case <-time.After(quotaDelay):
+						case <-ctx.Done():
+							return
+						}
+						continue
+
 					case SessionErrorRetry:
 						// Временный сетевой сбой (например "all retransmissions
 						// failed"): НЕ убиваем воркера — повторяем с паузой,

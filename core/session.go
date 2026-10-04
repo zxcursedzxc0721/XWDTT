@@ -86,6 +86,11 @@ const (
 	// например "all retransmissions failed"): воркер повторяет с задержкой,
 	// не умирает; адрес банится только после maxAttemptsPerAddress попыток.
 	SessionErrorRetry SessionErrorType = "RETRY"
+	// QUOTA — квота аллокаций исчерпана (error 486). Это лимит АККАУНТА VK
+	// на TURN-сервере, а не мёртвость адреса: другие хеши/группы на том же
+	// адресе работают, поэтому банить его нельзя (GlobalBlacklist общий) —
+	// просто ждём 30–60 с и повторяем, как в мобильном group.go.
+	SessionErrorQuota SessionErrorType = "QUOTA"
 	// FATAL — невосстановимая ошибка (FATAL_AUTH, хеш мёртв и т.д.)
 	SessionErrorFatal SessionErrorType = "FATAL"
 )
@@ -113,8 +118,9 @@ func (e *SessionError) Unwrap() error { return e.Err }
 // сетевой сбой или проблему конкретного TURN-адреса, должно вести к ретраю
 // или бану адреса, а НЕ к завершению воркера:
 //
-//	квота (486/quota)        → ADDRESS_DEAD: бан адреса 5 мин, берём следующий
-//	unreachable/timeout/...  → ADDRESS_DEAD: то же
+//	квота (486/quota)        → QUOTA: лимит аккаунта VK — ждём 30–60 с,
+//	                           банить адрес нельзя (он живой для других хешей)
+//	unreachable/timeout/...  → ADDRESS_DEAD: бан адреса 5 мин, берём следующий
 //	"all retransmissions failed", прочие сетевые сбои → RETRY: повтор через
 //	                                          паузу, бан после 3 неудач подряд
 func classifyAllocateError(err error) SessionErrorType {
@@ -125,8 +131,9 @@ func classifyAllocateError(err error) SessionErrorType {
 
 	switch {
 	case strings.Contains(errLower, "quota"),
-		strings.Contains(errLower, "486"),
-		strings.Contains(errLower, "unreachable"),
+		strings.Contains(errLower, "486"):
+		return SessionErrorQuota
+	case strings.Contains(errLower, "unreachable"),
 		strings.Contains(errLower, "timeout"),
 		strings.Contains(errLower, "connection refused"),
 		strings.Contains(errLower, "no route to host"):

@@ -192,6 +192,10 @@ func (b *Bridge) SendCaptchaResult(token string) {
 // его завершения уже начата новая сессия (быстрый Disconnect → Connect),
 // устаревший горутин не имеет права трогать состояние Bridge.
 func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
+	// Конфиг этой сессии уже применён? Чтобы ready-сообщение не врало:
+	// в raw/wg-режиме конфиг часто приходит раньше, чем ядро шлёт ready,
+	// и «жду конфиг от сервера» после «Туннель активен» путает.
+	cfgApplied := false
 	for ev := range events {
 		b.mu.Lock()
 		stale := b.session != sessID
@@ -247,6 +251,7 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 				if err := wg.Apply(ev.Data, ev.TurnIPs, policy, wgLogf); err != nil {
 					b.onEvent("error", fmt.Sprintf("[WG] Ошибка: %v", err))
 				} else {
+					cfgApplied = true
 					b.onEvent("log", "INFO", "[WG] Конфиг применён, туннель активен")
 					b.onEvent("state_changed", "connected")
 				}
@@ -286,13 +291,18 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 					b.onEvent("error", fmt.Sprintf("[RAW] Не удалось подключить TUN: %v", err))
 					break
 				}
+				cfgApplied = true
 				b.onEvent("log", "INFO", "[RAW] Туннель активен")
 				b.onEvent("state_changed", "connected")
 			case "ready":
 				// Не «туннель готов»: ready шлётся после авторизации воркеров,
 				// ещё ДО получения конфига. Настоящая готовность — событие
 				// state "connected" после применения конфига (wg_config/raw_config).
-				b.onEvent("log", "INFO", "[ЯДРО] Воркеры авторизованы, жду конфиг от сервера...")
+				if cfgApplied {
+					b.onEvent("log", "INFO", "[ЯДРО] Воркеры авторизованы (конфиг уже применён)")
+				} else {
+					b.onEvent("log", "INFO", "[ЯДРО] Воркеры авторизованы, жду конфиг от сервера...")
+				}
 			default:
 				b.onEvent("event", ev.Name)
 			}

@@ -17,13 +17,16 @@ func TestClassifyAllocateError_TemporaryNetworkFailureIsRetry(t *testing.T) {
 	}
 }
 
-func TestClassifyAllocateError_QuotaIsAddressDead(t *testing.T) {
+func TestClassifyAllocateError_QuotaIsQuotaNotBan(t *testing.T) {
+	// Квота (486) — лимит АККАУНТА VK, а не мёртвость адреса: банить
+	// глобальный TURN-адрес нельзя (другие хеши на нём работают).
 	for _, msg := range []string{
 		"TURN Allocate: quota exceeded",
 		"relay error 486",
+		"Allocate error response (error 486: Allocation Quota Reached)",
 	} {
-		if got := classifyAllocateError(errors.New(msg)); got != SessionErrorAddressDead {
-			t.Errorf("%q: got %q, want %q", msg, got, SessionErrorAddressDead)
+		if got := classifyAllocateError(errors.New(msg)); got != SessionErrorQuota {
+			t.Errorf("%q: got %q, want %q", msg, got, SessionErrorQuota)
 		}
 	}
 }
