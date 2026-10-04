@@ -5,14 +5,13 @@
 <h1 align="center">PWDTT</h1>
 
 <p align="center">
-  Десктопный VPN-клиент, который туннелирует трафик через TURN-серверы VK,<br>
+  Консольный VPN-клиент, который туннелирует трафик через TURN-серверы VK,<br>
   маскируя соединение под зашифрованный медиатрафик звонка.<br>
   <sub>Форк <a href="https://github.com/amurcanov/proxy-turn-vk-android">proxy-turn-vk-android</a> — версия для ПК</sub>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go">
-  <img src="https://img.shields.io/badge/Wails-v2-red?style=for-the-badge&logo=wails&logoColor=white" alt="Wails">
   <img src="https://img.shields.io/badge/Linux-amd64-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
   <img src="https://img.shields.io/badge/Windows-amd64-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
   <img src="https://img.shields.io/badge/macOS-Universal-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS">
@@ -34,17 +33,7 @@
 
 ### Linux
 
-**1. Установите зависимости:**
-
-```bash
-# Ubuntu/Debian
-sudo apt install wireguard-tools libwebkit2gtk-4.1-dev
-
-# Arch
-sudo pacman -S wireguard-tools webkit2gtk-4.1
-```
-
-**2. Настройте права для WireGuard:**
+**1. Права для WireGuard:**
 
 Приложению нужны права root для управления сетевым интерфейсом. Установите sudoers-правило:
 
@@ -60,7 +49,7 @@ your_user ALL=(ALL) NOPASSWD: /usr/bin/ip, /usr/bin/wg
 
 Скрипт автоматически определит текущего пользователя и создаст файл `/etc/sudoers.d/pwdtt`.
 
-**3. Запустите:**
+**2. Запустите:**
 
 ```bash
 chmod +x pwdtt-linux-amd64
@@ -69,25 +58,58 @@ chmod +x pwdtt-linux-amd64
 
 ### Windows
 
-Скачайте `pwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/PWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен.
+Скачайте `pwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/PWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен. Права администратора запрашиваются автоматически (UAC) при подключении.
 
 ### macOS
 
-Скачайте `PWDTT-macos.zip` из [Releases](https://github.com/luminescq/PWDTT/releases), распакуйте и запустите `PWDTT.app`. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
+Скачайте `PWDTT-macos.zip` из [Releases](https://github.com/luminescq/PWDTT/releases), распакуйте и запустите бинарник. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
 
 > Universal бинарник: работает на Intel и Apple Silicon (M1/M2/M3/M4).
 
 ---
 
-## Быстрый старт
+## Справка по CLI
 
-1. **Добавьте сервер** — кнопка `+` → вставьте `wdtt://`-ссылку или введите вручную
-2. **VK-хеши** — Настройки → вставьте хеши из `vk.com/call/join/<hash>`
-3. **Подключение** — кнопка питания
+Запуск без аргументов открывает **интерактивный режим**:
 
----
+```bash
+./pwdtt
+```
 
-## Ссылки
+### Команды
+
+| Команда | Описание |
+|---|---|
+| `pwdtt` | интерактивный промпт (все те же команды + `stats`, `logs`, `quit`) |
+| `pwdtt connect [флаги] <имя\|wdtt://ссылка>` | подключить туннель (Ctrl+C — отключить) |
+| `pwdtt ping [имя]` | замер RTT до TURN-сервера, без поднятия туннеля |
+| `pwdtt pause` / `pwdtt resume` | пауза / продолжить (в интерактиве; из отдельного процесса недоступны — туннель живёт в своём процессе) |
+| `pwdtt route [full\|split]` | режим маршрутизации (см. ниже) |
+| `pwdtt ips list \| add ...\| rm ...` | список адресов split-режима |
+| `pwdtt servers list\|add\|show\|rm\|set-hashes\|check\|edit` | управление серверами |
+| `pwdtt settings get\|set <ключ> <значение>` | настройки |
+| `pwdtt update` / `pwdtt report` / `pwdtt version` | обновление / отчёт / версия |
+
+### Флаги `connect`
+
+```
+-workers N          число воркеров (по умолчанию: max(9, хеши*9))
+-obfs audio|video   режим обфускации
+-fingerprint ИМЯ    chrome|firefox|safari|android|ios
+-turn-tcp           TCP-транспорт TURN
+-notls              без DTLS: RTP-obfs напрямую поверх TURN
+                    (сервер с -listen-direct)
+-raw                raw-IP без WireGuard (сервер с -listen-raw)
+```
+
+Примеры:
+```bash
+pwdtt connect "Мой сервер"
+pwdtt connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
+pwdtt connect "Мой сервер" -raw -notls
+```
+
+### Ссылки
 
 ```
 wdtt://<IP>:<DTLS_PORT>:<WG_PORT>:<PROXY_PORT>:<PASSWORD>[:<HASH1>,<HASH2>,...][#название]
@@ -102,50 +124,110 @@ wdtt://<IP>:<DTLS_PORT>:<WG_PORT>:<PROXY_PORT>:<PASSWORD>[:<HASH1>,<HASH2>,...][
 wdtt://1.2.3.4:56000:56001:0:mypassword:AbCdEfGh,XyZ12345#Мой сервер
 ```
 
-Вставить ссылку можно через кнопку `+` или просто **Ctrl+V** в любом месте окна.
+Ссылку можно передать аргументом команды `connect`. Также принимются ссылки qwdtt.
 
-> Также принимаються ссылки qwdtt.
+---
+
+## Маршрутизация: весь трафик или только список
+
+Режим выбирается командой `route` (хранится в настройках):
+
+```bash
+pwdtt route          # показать текущий режим
+pwdtt route full     # через VPN — весь трафик (по умолчанию)
+pwdtt route split    # через VPN — только адреса из списка
+```
+
+В режиме `split` трафик идёт через туннель **только** к адресам из списка, остальное — напрямую. Список общий для всех серверов:
+
+```bash
+pwdtt ips list
+pwdtt ips add 1.2.3.4          # IP
+pwdtt ips add 10.0.0.0/24      # CIDR
+pwdtt ips add vk.com           # домен — резолвится с кэшем (10 мин)
+pwdtt ips rm vk.com
+```
+
+Ограничения: 100 записей, 400 маршрутов. Домены резолвятся при подключении и кэшируются в `dnscache.json`; недоступный домен при наличии старого кэша использует его.
+
+TURN/VK/DNS-адреса в режиме `full` идут мимо туннеля автоматически — петля исключена.
+
+---
+
+## Настройки
+
+```bash
+pwdtt settings get
+pwdtt settings set autostart on|off     # автозапуск
+pwdtt settings set obfs audio|video     # режим обфускации
+pwdtt settings set turn-tcp on|off      # TCP-транспорт TURN
+pwdtt settings set workers N            # воркеров (0 = авто)
+pwdtt settings set fingerprint ИМЯ      # chrome|firefox|safari|android|ios
+pwdtt settings set doh РЕЖИМ            # DNS-over-HTTPS (см. ниже)
+```
+
+### DNS over HTTPS
+
+Обычный DNS-резолв утекает провайдеру — кто вы посещаете. DoH шлёт DNS-запросы по HTTPS уже внутри туннеля:
+
+```bash
+pwdtt settings set doh yandex      # по умолчанию
+pwdtt settings set doh cloudflare
+pwdtt settings set doh google
+pwdtt settings set doh doh:URL      # свой DoH-провайдер
+pwdtt settings set doh custom:IP    # свой обычный DNS-сервер
+```
+
+Доступны также режимы `doh-yandex` / `doh-cloudflare` / `doh-google` (то же самое, явная запись).
+
+---
+
+## Проверка сервера и хешей
+
+```bash
+pwdtt servers check <имя>   # проверить VK-хеши: ok/captcha/dead/limited/network
+pwdtt ping [имя]            # RTT до TURN-сервера (аллокация + хендшейк)
+```
 
 ---
 
 ## Сборка из исходников
 
-**Зависимости:** Go 1.26+, Node.js 22+, [Wails v2](https://wails.io)
+**Зависимости:** только Go 1.26+. Node.js, Wails и webkit больше не нужны — интерфейс полностью консольный.
 
 ```bash
-# Linux
-sudo apt install libayatana-appindicator3-dev pkg-config gcc libwebkit2gtk-4.1-dev
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
 git clone https://github.com/luminescq/PWDTT
 cd PWDTT
-wails build -platform linux/amd64 -tags webkit2_41 -o pwdtt-linux-amd64
-# → build/bin/pwdtt-linux-amd64
+
+go build ./...                # проверка компиляции
+go test ./...                 # тесты (core: cd core && go test ./...)
+
+go build -o pwdtt             # нативная сборка
 ```
 
-```bash
-# Windows (кросс-компиляция с Linux)
-wails build -platform windows/amd64
-# → build/bin/pwdtt.exe
-```
+Кросс-сборка:
 
 ```bash
-# macOS (только на macOS)
-wails build -platform darwin/universal
-# → build/bin/pwdtt-macos
+GOOS=windows GOARCH=amd64 go build -o pwdtt-windows-amd64.exe
+GOOS=linux   GOARCH=amd64 go build -o pwdtt-linux-amd64
+GOOS=darwin  GOARCH=arm64 go build -o pwdtt-macos-arm64
 ```
+
+> `assets/wintun.dll` встраивается в Windows-бинарник автоматически (`//go:embed`).
+
+CI (`.github/workflows/build.yml`) собирает Linux/Windows/macOS артефакты обычным `go build`; `release.yml` публикует их в Releases по тегам `v*`.
 
 ---
 
 ## Отчёт об ошибках
 
-Если приложение работает некорректно, вы можете собрать отчёт прямо из интерфейса:
+Соберите отчёт командой:
 
-1. Откройте **Настройки** (шестерёнка вверху)
-2. Нажмите **Отчёт** — информация о системе и логах сессии скопируется в буфер обмена
-3. Создайте [Issue](https://github.com/luminescq/PWDTT/issues/new) и вставьте отчёт
+```bash
+pwdtt report
+```
 
-Отчёт содержит: версию ОС, версию Go, версию приложения, имя хоста и.filtered логи текущей сессии.
+Вывод содержит версию ОС, версию приложения, состояние настроек и логи текущей сессии — скопируйте его в [Issue](https://github.com/luminescq/PWDTT/issues/new).
 
 ---
 

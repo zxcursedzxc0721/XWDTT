@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -163,6 +164,13 @@ func serversSetHashes(st *backend.Store, args []string) int {
 }
 
 func serversEdit(st *backend.Store, args []string) int {
+	// --help до всех проверок: справка должна работать и без валидного имени.
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			serversUsage()
+			return 0
+		}
+	}
 	flagArgs, posArgs := splitArgs(args, editValueFlags)
 	if len(posArgs) != 1 {
 		serversUsage()
@@ -177,7 +185,8 @@ func serversEdit(st *backend.Store, args []string) int {
 	}
 
 	np, newName, code := parseEditFlags(flagArgs, p, name)
-	if code != 0 {
+	if np == nil {
+		// nil → либо ошибка флагов (code=2), либо --help (code=0)
 		return code
 	}
 
@@ -207,6 +216,10 @@ func parseEditFlags(flagArgs []string, p *backend.ProfileData, name string) (*ba
 	newName := fs.String("name", name, "новое имя профиля")
 
 	if err := fs.Parse(flagArgs); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			serversUsage()
+			return nil, "", 0
+		}
 		fmt.Fprintf(os.Stderr, "ошибка флагов: %v\n", err)
 		serversUsage()
 		return nil, "", 2

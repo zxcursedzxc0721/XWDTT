@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -31,6 +32,10 @@ func runPing(args []string) int {
 
 	flagArgs, posArgs := splitArgs(args, pingValueFlags)
 	if err := fs.Parse(flagArgs); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			pingUsage()
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "ошибка флагов: %v\n", err)
 		pingUsage()
 		return 2

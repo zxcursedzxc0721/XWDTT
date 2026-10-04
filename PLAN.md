@@ -147,7 +147,28 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
     `tests/check_test.go`.
   - Приёмка: `go build`/`go vet`/`go test` зелёные (оба модуля, 3 ОС), бенчмарки
     `tests/benchmarks_test.go` — деградации нет; ручная проверка на Windows за пользователем.
-- [ ] **Этап 5.** Тесты, CI, README
+- [x] **Этап 5.** Тесты, CI, README — **ГОТОВО (04.10.2026):**
+  - **Тесты:** покрытие Этапов 3–4 — `tests/routeplan_test.go` (BuildRoutePlan full/split,
+    NormalizeSplitEntry, резолв-кэш: stale-fallback/fresh-cache/сбой домена, лимиты,
+    RouteMode-default), `tests/raw_test.go` (parseRAWConf, заглушка non-Windows),
+    `tests/check_test.go` (classifyHashCheckError), `core/dispatcher_test.go` (chunkSizeFor,
+    константы), `core/obfs_replay_test.go` (повтор/старый/SSRC/короткий кадр),
+    `core/doh_test.go` (пресеты/URL/DNS-Wire); старые тесты зелёные, фронтенд-тесты удалены
+    вместе с frontend (Этап 1).
+  - **CI `build.yml`:** без Node/Wails/webkit — job `test` (vet+test обоих модулей, core
+    отдельно через `working-directory`), `build-linux-windows` (`go build` нативно и с
+    `GOOS=windows`), `build-macos` (amd64+arm64 → `lipo` → zip); имена артефактов
+    `pwdtt-linux-amd64`/`pwdtt-windows-amd64`/`pwdtt-macos` сохранены — `release.yml`
+    не менялся; YAML провалидирован.
+  - **README.md:** переписан под CLI — справка по командам, флаги `connect`
+    (`-raw`/`-notls`), раздел «Маршрутизация: весь / только список» (`route`, `ips`), DoH,
+    `servers check`/`ping`, сборка обычным `go build` (без Wails/Node), `report`.
+  - **Фиксы по ходу:** `--help` в `connect`/`ping`/`servers edit` теперь код 0 (в `connect`
+    отдельный `codeHelpShown`, т.к. 0 = «туннель запущен» и runConnect ждал бы Ctrl+C);
+    help-проверка в `servers edit` идёт до резолва имени профиля.
+  - Приёмка: `go vet` + `go build` для windows/linux/darwin amd64/arm64 + `go test ./...`
+    (оба модуля) зелёные; smoke-команды CLI (`help`/`route`/`ips`/`settings`/`servers`/
+    `--help`) проверены.
 
 **После каждого этапа обязательно:** `go build ./...` и `go test ./...` — должны быть зелёными.
 

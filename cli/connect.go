@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -69,6 +70,10 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 
 	flagArgs, posArgs := splitArgs(args, connectValueFlags)
 	if err := fs.Parse(flagArgs); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			connectUsage()
+			return codeHelpShown
+		}
 		fmt.Fprintf(os.Stderr, "ошибка флагов: %v\n", err)
 		connectUsage()
 		return 2
@@ -205,6 +210,10 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 	return 0
 }
 
+// codeHelpShown — startTunnel показал справку (--help): это успех, но не
+// «туннель запущен», поэтому код 0 здесь означал бы вечное ожидание в runConnect.
+const codeHelpShown = -1
+
 // runConnect — неблокирующая часть подключения (флаги, резолв, запуск ядра).
 // Возвращает код выхода; 0 = туннель запущен и работает.
 func runConnect(args []string) int {
@@ -218,6 +227,9 @@ func runConnect(args []string) int {
 	installSignalWatcher(app, p)
 
 	if code := startTunnel(app, p, args); code != 0 {
+		if code == codeHelpShown {
+			return 0
+		}
 		return code
 	}
 
