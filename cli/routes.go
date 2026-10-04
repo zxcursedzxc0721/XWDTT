@@ -24,6 +24,9 @@ func runRoute(args []string) int {
 		return 2
 	}
 	switch args[0] {
+	case "-h", "--help", "help":
+		routeUsage()
+		return 0
 	case backend.RouteModeFull, backend.RouteModeSplit:
 		s := st.LoadSettings()
 		s.RouteMode = args[0]
@@ -71,6 +74,9 @@ func ipsCmd(st *backend.Store, args []string) int {
 		args = []string{"list"}
 	}
 	switch args[0] {
+	case "-h", "--help", "help":
+		ipsUsage()
+		return 0
 	case "list", "ls":
 		return ipsList(st)
 	case "add":

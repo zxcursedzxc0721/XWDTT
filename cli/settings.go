@@ -40,6 +40,9 @@ func settingsCmd(st *backend.Store, app *backend.App, args []string) int {
 		return 0
 	}
 	switch args[0] {
+	case "-h", "--help", "help":
+		settingsUsage()
+		return 0
 	case "get":
 		settingsGet(st)
 		return 0

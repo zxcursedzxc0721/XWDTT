@@ -23,6 +23,9 @@ func serversCmd(st *backend.Store, args []string) int {
 		return serversList(st)
 	}
 	switch args[0] {
+	case "-h", "--help", "help":
+		serversUsage()
+		return 0
 	case "list", "ls":
 		return serversList(st)
 	case "add":
