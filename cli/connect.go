@@ -261,10 +261,7 @@ func installSignalWatcher(app *backend.App, p *printer) {
 				fmt.Println(p.c(cYellow, "Отключение... (ещё раз Ctrl+C — принудительно)"))
 				go func() {
 					app.Disconnect()
-					deadline := time.Now().Add(15 * time.Second)
-					for app.IsRunning() && time.Now().Before(deadline) {
-						time.Sleep(100 * time.Millisecond)
-					}
+					waitStopped(app, 15*time.Second)
 					os.Exit(0)
 				}()
 			}

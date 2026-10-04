@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"pwdtt/backend"
 )
@@ -66,6 +67,9 @@ func dispatchInteractive(app *backend.App, p *printer, args []string) bool {
 		}
 		p.line(p.c(cYellow, "Отключение..."))
 		app.Disconnect()
+		// Ждём фактического завершения ядра: иначе набранный сразу connect
+		// упирается в "running" ещё останавливающейся сессии.
+		waitStopped(app, 15*time.Second)
 	case "pause":
 		if !app.IsRunning() {
 			p.line("нет активного туннеля.")
@@ -106,12 +110,24 @@ func dispatchInteractive(app *backend.App, p *printer, args []string) bool {
 		if app.IsRunning() {
 			p.line(p.c(cYellow, "Отключение..."))
 			app.Disconnect()
+			waitStopped(app, 15*time.Second)
 		}
 		return true
 	default:
 		p.line("неизвестная команда: " + args[0] + " (help — справка)")
 	}
 	return false
+}
+
+// waitStopped ждёт фактического завершения ядра (Bridge.Disconnect только
+// запускает остановку): без ожидания набранный сразу connect упирается в
+// "already running" ещё останавливающейся сессии.
+func waitStopped(app *backend.App, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for app.IsRunning() && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	return !app.IsRunning()
 }
 
 // SplitCommandLine разбивает строку по пробелам с учётом двойных кавычек,

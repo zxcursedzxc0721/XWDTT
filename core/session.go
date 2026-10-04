@@ -518,6 +518,14 @@ func RunSession(
 	stats.ActiveConnections.Add(1)
 	defer stats.ActiveConnections.Add(-1)
 
+	// Прерывание ожидания конфига при отмене сессии: RequestRawConfig/
+	// RequestConfig ставят ReadDeadline на 45 сек, и без этой подписки
+	// Stop() переживают его целиком — стоп тянется полминуты, а быстрый
+	// reconnect после disconnect падает с "already running".
+	stopCfgWait := context.AfterFunc(sessCtx, func() {
+		_ = activeConn.SetDeadline(time.Now())
+	})
+
 	if getConfig && configCh != nil && tp.RawMode {
 		// RAW-режим: сервер отвечает RAWCONF:ip|dns|mtu вместо WG-конфига
 		// (см. RequestRawConfig). Конфиг упаковывается в строку RAWCONF: и
@@ -575,6 +583,8 @@ func RunSession(
 			log.Printf("[ВОРКЕР #%d] Ошибка авторизации: %v", sessionID, authErr)
 		}
 	}
+
+	stopCfgWait() // конфиг получен/провалился — дедлайн больше не нужен
 
 	emitReady()
 

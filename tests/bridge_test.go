@@ -85,7 +85,7 @@ func TestConnect_AlreadyRunning(t *testing.T) {
 		if err2 == nil {
 			t.Error("expected 'already running' error")
 		}
-		if err2 != nil && err2.Error() != "already running" {
+		if err2 != nil && err2.Error() != "туннель уже запущен — сначала disconnect" {
 			t.Errorf("unexpected error: %v", err2)
 		}
 	}

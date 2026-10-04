@@ -36,7 +36,7 @@ func (b *Bridge) Connect(params ConnectParams) error {
 	if b.running {
 		b.mu.Unlock()
 		log.Printf("[BRIDGE] Connect rejected: already running")
-		return fmt.Errorf("already running")
+		return fmt.Errorf("туннель уже запущен — сначала disconnect")
 	}
 	// Сразу помечаем как running чтобы заблокировать параллельные вызовы
 	b.running = true

@@ -86,6 +86,7 @@ type Core struct {
 	startOnce         sync.Once // guard от двойного Start()
 	startErr          atomic.Value // *startFailure — ошибка первого Start(), если он провалился
 	once              sync.Once // guard от двойного Stop()
+	readyOnce         sync.Once // "ready" — один раз на сессию, а не на воркера
 
 	// disp — диспетчер текущего запуска (для raw-режима: backend поднимает
 	// TUN после RAWCONF и передаёт его сюда через AttachTUN).

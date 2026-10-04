@@ -18,9 +18,13 @@ func (c *Core) emitError(code, message string, fatal bool) {
 	}
 }
 
-// emitReady отправляет событие "туннель готов".
+// emitReady отправляет событие "туннель готов" — один раз на сессию.
+// Каждый воркер вызывает ready после авторизации; без Once в консоль
+// вываливалось N одинаковых строк «Туннель готов к работе» (по числу воркеров).
 func (c *Core) emitReady() {
-	c.emit(Event{Type: EventEvent, Name: "ready"})
+	c.readyOnce.Do(func() {
+		c.emit(Event{Type: EventEvent, Name: "ready"})
+	})
 }
 
 // emitCaptchaRequest отправляет запрос на решение капчи.
