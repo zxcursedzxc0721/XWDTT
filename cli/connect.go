@@ -162,7 +162,12 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 
 	turn := *turnTCP || settings.TurnTCP || prof.TurnTCP
 
-	fmt.Printf("Сервер:      %s (профиль %q)\n", prof.PeerAddr, profName)
+	// В прямых режимах порт пира другой: -notls → -listen-direct, -raw →
+	// -listen-raw (см. cli/peer.go). Без этого GETCONF уходит на DTLS-порт
+	// и сервер его молча отбрасывает.
+	peerAddr := PeerAddrForMode(prof.PeerAddr, *noDTLS, *raw, prof.DirectPort, prof.RawPort)
+
+	fmt.Printf("Сервер:      %s (профиль %q)\n", peerAddr, profName)
 	fmt.Printf("Воркеры:     %d   обфускация: %s   TCP: %s", w, obfsMode, yesNo(turn))
 	if fp != "" {
 		fmt.Printf("   fingerprint: %s", fp)
@@ -185,7 +190,7 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 	}
 
 	err := app.Connect(backend.ConnectParams{
-		PeerAddr:    prof.PeerAddr,
+		PeerAddr:    peerAddr,
 		Password:    prof.Password,
 		Hashes:      hashes,
 		DeviceID:    prof.DeviceID,
@@ -278,8 +283,9 @@ func connectUsage() {
   -fingerprint ИМЯ      chrome|firefox|safari|android|ios
   -turn-tcp             TCP-транспорт TURN
   -notls                без DTLS: RTP-obfs напрямую поверх TURN
-                        (сервер с -listen-direct)
-  -raw                  raw-IP без WireGuard (сервер с -listen-raw)
+                        (сервер с -listen-direct; порт direct_port, дефолт 56002)
+  -raw                  raw-IP без WireGuard (сервер с -listen-raw;
+                        порт raw_port, дефолт 56003)
 
 Примеры:
   pwdtt connect "Мой сервер"

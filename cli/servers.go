@@ -117,6 +117,10 @@ func serversShow(st *backend.Store, args []string) int {
 	if p.Workers > 0 {
 		fmt.Printf("Воркеры:  %d\n", p.Workers)
 	}
+	if p.DirectPort != "" || p.RawPort != "" {
+		fmt.Printf("Прямые:   -notls→порт %s   -raw→порт %s\n",
+			peerPortOr(p.DirectPort, defaultDirectPort), peerPortOr(p.RawPort, defaultRawPort))
+	}
 	fmt.Printf("DeviceID: %s\n", p.DeviceID)
 	return 0
 }
@@ -216,6 +220,8 @@ func parseEditFlags(flagArgs []string, p *backend.ProfileData, name string) (*ba
 	port := fs.String("port", p.TurnPort, "переопределение порта TURN")
 	turnTCP := fs.Bool("turn-tcp", p.TurnTCP, "TCP-транспорт TURN")
 	workers := fs.Int("workers", p.Workers, "воркеры")
+	directPort := fs.String("direct-port", p.DirectPort, "порт -listen-direct (режим -notls, дефолт 56002)")
+	rawPort := fs.String("raw-port", p.RawPort, "порт -listen-raw (режим -raw, дефолт 56003)")
 	newName := fs.String("name", name, "новое имя профиля")
 
 	if err := fs.Parse(flagArgs); err != nil {
@@ -241,6 +247,8 @@ func parseEditFlags(flagArgs []string, p *backend.ProfileData, name string) (*ba
 	np.TurnPort = *port
 	np.TurnTCP = *turnTCP
 	np.Workers = *workers
+	np.DirectPort = strings.TrimSpace(*directPort)
+	np.RawPort = strings.TrimSpace(*rawPort)
 
 	if strings.TrimSpace(np.PeerAddr) == "" {
 		fmt.Fprintln(os.Stderr, "адрес не может быть пустым")
@@ -264,6 +272,7 @@ func serversUsage() {
   check <имя>                         проверить хеши VK (статусы ok/captcha/dead/...)
   edit <имя> [-peer A] [-password P] [-name N] [-listen L]
         [-turn H] [-port P] [-turn-tcp] [-workers N]
+        [-direct-port N] [-raw-port N]
 `)
 }
 

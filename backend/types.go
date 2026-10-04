@@ -27,6 +27,13 @@ type ProfileData struct {
 	DeviceID string   `json:"device_id"` // уникальный ID устройства
 	TurnTCP  bool     `json:"turn_tcp"`  // использовать TCP транспорт
 	Workers  int      `json:"workers,omitempty"` // воркеры (0 = авто), приходят из qwdtt-ссылки
+
+	// Порты прямых режимов: на сервере -listen-direct и -listen-raw живут на
+	// ОТДЕЛЬНЫХ портах от DTLS (-listen), поэтому в режимах -notls/-raw порт
+	// пира подменяется (как в мобильном клиенте: TunnelService.kt,
+	// serverDirectPort/serverRawPort). Пусто = дефолты деплоя 56002/56003.
+	DirectPort string `json:"direct_port,omitempty"` // порт -listen-direct (режим -notls)
+	RawPort    string `json:"raw_port,omitempty"`    // порт -listen-raw (режим -raw)
 }
 
 // AppSettings — настройки приложения, хранятся в ~/.config/pwdtt/config.json.

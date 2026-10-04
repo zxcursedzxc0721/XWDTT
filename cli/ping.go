@@ -11,7 +11,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"strings"
 	"time"
 
 	"pwdtt/backend"
@@ -88,9 +87,12 @@ func runPing(args []string) int {
 		return 1
 	}
 
-	peer, err := net.ResolveUDPAddr("udp", strings.TrimSpace(prof.PeerAddr))
+	// Как в connect: прямые режимы ходят на свой порт сервера.
+	peerAddr := PeerAddrForMode(prof.PeerAddr, *notls, *raw, prof.DirectPort, prof.RawPort)
+
+	peer, err := net.ResolveUDPAddr("udp", peerAddr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "резолв пира %q: %v\n", prof.PeerAddr, err)
+		fmt.Fprintf(os.Stderr, "резолв пира %q: %v\n", peerAddr, err)
 		return 1
 	}
 
@@ -118,7 +120,7 @@ func runPing(args []string) int {
 		TCPTransport: *turnTCP || settings.TurnTCP || prof.TurnTCP,
 	}
 
-	fmt.Printf("Профиль:     %s (пир %s)\n", profName, prof.PeerAddr)
+	fmt.Printf("Профиль:     %s (пир %s)\n", profName, peerAddr)
 
 	// Первый успешный хеш — как в -ping-only (перебор по всем хешам).
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
