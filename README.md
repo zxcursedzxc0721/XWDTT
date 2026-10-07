@@ -39,7 +39,7 @@
 
 ```bash
 # Одной командой (скачает и запустит):
-sudo bash <(curl -s https://raw.githubusercontent.com/luminescq/XWDTT/main/assets/install-sudoers.sh)
+sudo bash <(curl -s https://raw.githubusercontent.com/zxcursedzxc0721/XWDTT/main/assets/install-sudoers.sh)
 ```
 
 Или вручную через `visudo` — добавьте в `/etc/sudoers`:
@@ -58,11 +58,11 @@ chmod +x xwdtt-linux-amd64
 
 ### Windows
 
-Скачайте `xwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/XWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен. Права администратора запрашиваются автоматически (UAC) при подключении.
+Скачайте `xwdtt-windows-amd64.exe` из [Releases](https://github.com/zxcursedzxc0721/XWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен. Права администратора запрашиваются автоматически (UAC) при подключении.
 
 ### macOS
 
-Скачайте `XWDTT-macos.zip` из [Releases](https://github.com/luminescq/XWDTT/releases), распакуйте и запустите бинарник. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
+Скачайте `XWDTT-macos.zip` из [Releases](https://github.com/zxcursedzxc0721/XWDTT/releases), распакуйте и запустите бинарник. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
 
 > Universal бинарник: работает на Intel и Apple Silicon (M1/M2/M3/M4).
 
@@ -198,7 +198,7 @@ xwdtt ping [имя]            # RTT до TURN-сервера (аллокаци�
 **Зависимости:** только Go 1.26+. Node.js, Wails и webkit больше не нужны — интерфейс полностью консольный.
 
 ```bash
-git clone https://github.com/luminescq/XWDTT
+git clone https://github.com/zxcursedzxc0721/XWDTT
 cd XWDTT
 
 go build ./...                # проверка компиляции
@@ -229,7 +229,7 @@ CI (`.github/workflows/build.yml`) собирает Linux/Windows/macOS арте
 xwdtt report
 ```
 
-Вывод содержит версию ОС, версию приложения, состояние настроек и логи текущей сессии — скопируйте его в [Issue](https://github.com/luminescq/XWDTT/issues/new).
+Вывод содержит версию ОС, версию приложения, состояние настроек и логи текущей сессии — скопируйте его в [Issue](https://github.com/zxcursedzxc0721/XWDTT/issues/new).
 
 ---
 
