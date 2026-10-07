@@ -20,10 +20,10 @@ type UpdateInfo struct {
 }
 
 // CheckUpdate проверяет наличие обновлений на GitHub.
-// Репозиторий: luminescq/PWDTT.
+// Репозиторий: luminescq/XWDTT.
 // Возвращает ошибку если сеть недоступна или API недоступен.
 func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
-	url := "https://api.github.com/repos/luminescq/PWDTT/releases/latest"
+	url := "https://api.github.com/repos/luminescq/XWDTT/releases/latest"
 
 	client := &http.Client{Timeout: 8 * time.Second}
 	resp, err := client.Get(url)

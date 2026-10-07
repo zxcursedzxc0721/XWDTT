@@ -24,7 +24,7 @@ func setAutoStart(v bool) error {
 	}
 }
 
-const launchAgentLabel = "com.pwdtt.autostart"
+const launchAgentLabel = "com.xwdtt.autostart"
 
 func setAutoStartDarwin(v bool) error {
 	dir := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents")
@@ -37,7 +37,7 @@ func setAutoStartDarwin(v bool) error {
 	if err != nil {
 		return err
 	}
-	// .app: .../PWDTT.app/Contents/MacOS/pwdtt → запускаем через open,
+	// .app: .../XWDTT.app/Contents/MacOS/xwdtt → запускаем через open,
 	// чтобы поднялся именно бандл, а не голый бинарник
 	appPath := exe
 	if idx := strings.Index(exe, ".app/Contents/MacOS/"); idx != -1 {
@@ -71,13 +71,13 @@ func setAutoStartLinux(v bool) error {
 		return err
 	}
 	dir := filepath.Join(os.Getenv("HOME"), ".config", "autostart")
-	path := filepath.Join(dir, "pwdtt.desktop")
+	path := filepath.Join(dir, "xwdtt.desktop")
 	if !v {
 		os.Remove(path)
 		return nil
 	}
 	os.MkdirAll(dir, 0o755)
-	content := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=PWDTT\nExec=%s\nX-GNOME-Autostart-enabled=true\n", execPath)
+	content := fmt.Sprintf("[Desktop Entry]\nType=Application\nName=XWDTT\nExec=%s\nX-GNOME-Autostart-enabled=true\n", execPath)
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
@@ -87,7 +87,7 @@ func setAutoStartWindows(v bool) error {
 		return err
 	}
 	
-	taskName := "PWDTT_AutoStart"
+	taskName := "XWDTT_AutoStart"
 	
 	if !v {
 		// Remove scheduled task

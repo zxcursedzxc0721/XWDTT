@@ -1,4 +1,4 @@
-# PWDTT — справочник по командам
+# XWDTT — справочник по командам
 
 Все команды CLI, их описание, флаги, коды выхода и типовые сценарии.
 
@@ -7,7 +7,7 @@
 ## Сборка
 
 ```powershell
-cd F:\etc\PWDTT
+cd F:\etc\XWDTT
 $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\pw64.exe" .
 ```
 
@@ -28,7 +28,7 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\pw64.exe" .
 | Права администратора | `connect` и интерактив запрашивают UAC при старте (после валидации аргументов) — `route`, `netsh`, wintun требуют прав. `ping`/`servers`/`settings`/`route`/`ips` прав не требуют |
 | Процесс-модель | Туннель живёт **в своём процессе** (`connect` или интерактив). `pause`/`resume`/`disconnect` из другого процесса не работают |
 | Ctrl+C | В окне `connect`: 1-й — аккуратное отключение (exit 0), 2-й — принудительно (exit 130) |
-| Конфиги | `~/.config/pwdtt/` — `config.json`, `servers/*.json`, `dnscache.json`, `logs/` |
+| Конфиги | `~/.config/xwdtt/` — `config.json`, `servers/*.json`, `dnscache.json`, `logs/` |
 
 **Коды выхода:**
 
@@ -45,18 +45,18 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\pw64.exe" .
 
 | Команда | Описание |
 |---|---|
-| `pwdtt` | интерактивный режим (промпт `pwdtt>`) |
-| `pwdtt help` | эта справка |
-| `pwdtt version` | версия (`-v`, `--version`) |
-| `pwdtt report` | отчёт для Issue: ОС, версия, настройки, логи сессии (печатает в stdout) |
-| `pwdtt update` | проверить наличие обновления (печатает ссылку на скачивание) |
+| `xwdtt` | интерактивный режим (промпт `xwdtt>`) |
+| `xwdtt help` | эта справка |
+| `xwdtt version` | версия (`-v`, `--version`) |
+| `xwdtt report` | отчёт для Issue: ОС, версия, настройки, логи сессии (печатает в stdout) |
+| `xwdtt update` | проверить наличие обновления (печатает ссылку на скачивание) |
 
 ---
 
 ## `connect` — подключение туннеля
 
 ```text
-pwdtt connect [флаги] <имя|wdtt://ссылка>
+xwdtt connect [флаги] <имя|wdtt://ссылка>
 ```
 
 Поднимает TUN-интерфейс, применяет маршруты (по режиму `route`), запускает
@@ -84,7 +84,7 @@ pwdtt connect [флаги] <имя|wdtt://ссылка>
 | `-notls` | `-listen-direct` | профиль `direct_port`, иначе **56002** |
 | `-raw` | `-listen-raw` | профиль `raw_port`, иначе **56003** |
 
-Порты задаются в профиле: `pwdtt servers edit <имя> -direct-port N -raw-port N`.
+Порты задаются в профиле: `xwdtt servers edit <имя> -direct-port N -raw-port N`.
 
 Флаги можно писать в любом порядке, до или после имени: `connect zxc --workers 18`.
 `-h`/`--help` — справка, exit 0.
@@ -102,7 +102,7 @@ pw64.exe connect zxc -raw -notls
 ## `ping` — замер RTT (туннель НЕ поднимает)
 
 ```text
-pwdtt ping [флаги] [имя]
+xwdtt ping [флаги] [имя]
 ```
 
 Замеряет время отклика до TURN-сервера: аллокация + DTLS-хендшейк (или прямой
@@ -125,13 +125,13 @@ pw64.exe ping -raw         # без профиля, прямой запрос
 ## `servers` — управление профилями серверов
 
 ```text
-pwdtt servers list                                  # таблица: имя, адрес, хеши, TCP, воркеры
-pwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ[:ХЕШИ][#название]"
-pwdtt servers show <имя>                            # все поля профиля
-pwdtt servers rm <имя>                              # удалить
-pwdtt servers set-hashes <имя> h1,h2,...            # заменить хеши VK
-pwdtt servers check <имя>                           # проверить хеши: ok/captcha/dead/limited/network
-pwdtt servers edit <имя> [флаги]                    # правка полей
+xwdtt servers list                                  # таблица: имя, адрес, хеши, TCP, воркеры
+xwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ[:ХЕШИ][#название]"
+xwdtt servers show <имя>                            # все поля профиля
+xwdtt servers rm <имя>                              # удалить
+xwdtt servers set-hashes <имя> h1,h2,...            # заменить хеши VK
+xwdtt servers check <имя>                           # проверить хеши: ok/captcha/dead/limited/network
+xwdtt servers edit <имя> [флаги]                    # правка полей
 ```
 
 **`add` — upsert:** если профиль с тем же адресом и паролем уже есть, он
@@ -162,8 +162,8 @@ pw64.exe servers check zxc
 ## `settings` — настройки (сохраняются в `config.json`)
 
 ```text
-pwdtt settings get
-pwdtt settings set <ключ> <значение>
+xwdtt settings get
+xwdtt settings set <ключ> <значение>
 ```
 
 | Ключ | Значения | Описание |
@@ -187,9 +187,9 @@ pw64.exe settings set workers 27
 ## `route` — режим маршрутизации
 
 ```text
-pwdtt route           # показать текущий режим
-pwdtt route full      # весь трафик через VPN (по умолчанию)
-pwdtt route split     # через VPN только адреса из списка (ips)
+xwdtt route           # показать текущий режим
+xwdtt route full      # весь трафик через VPN (по умолчанию)
+xwdtt route split     # через VPN только адреса из списка (ips)
 ```
 
 Режим хранится в настройках и применяется при **следующем** подключении.
@@ -201,10 +201,10 @@ pwdtt route split     # через VPN только адреса из списк
 ## `ips` — список адресов split-режима
 
 ```text
-pwdtt ips list
-pwdtt ips add <ip|cidr|домен>...      # можно несколько разом
-pwdtt ips import <файл.json>          # пакетный импорт из JSON-файла
-pwdtt ips rm  <ip|cidr|домен>...
+xwdtt ips list
+xwdtt ips add <ip|cidr|домен>...      # можно несколько разом
+xwdtt ips import <файл.json>          # пакетный импорт из JSON-файла
+xwdtt ips rm  <ip|cidr|домен>...
 ```
 
 - Домены резолвятся **при подключении**, кэш в `dnscache.json` (10 минут);
@@ -234,7 +234,7 @@ pw64.exe ips rm vk.com
 
 ---
 
-## Интерактивный режим (`pwdtt` без аргументов)
+## Интерактивный режим (`xwdtt` без аргументов)
 
 | Команда | Описание |
 |---|---|
@@ -264,7 +264,7 @@ route print -4                                  # состояние ДО
 Start-Process -FilePath "$env:TEMP\pw64.exe" -ArgumentList "connect","zxc"
 
 # пока окно открыто:
-Find-NetRoute -RemoteIPAddress 1.1.1.1 | Select InterfaceAlias   # → pwdtt-wg
+Find-NetRoute -RemoteIPAddress 1.1.1.1 | Select InterfaceAlias   # → xwdtt-wg
 Find-NetRoute -RemoteIPAddress 8.8.8.8 | Select InterfaceAlias   # → Ethernet
 (Invoke-WebRequest https://api.ipify.org -UseBasicParsing).Content  # IP не изменился
 
@@ -277,7 +277,7 @@ Find-NetRoute -RemoteIPAddress 8.8.8.8 | Select InterfaceAlias   # → Ethernet
 pw64.exe route full
 Start-Process -FilePath "$env:TEMP\pw64.exe" -ArgumentList "connect","zxc"
 
-route print -4                                  # default теперь через pwdtt-wg
+route print -4                                  # default теперь через xwdtt-wg
 (Invoke-WebRequest https://api.ipify.org -UseBasicParsing).Content  # IP сервера
 Test-Connection 8.8.8.8 -Count 3                # пинг через туннель
 
@@ -289,14 +289,14 @@ Test-Connection 8.8.8.8 -Count 3                # пинг через тунне
 ```powershell
 Get-Process pw64 -ErrorAction SilentlyContinue | Stop-Process -Force
 # wintun-адаптер удаляется вместе с процессом (проверено), мусора не остаётся:
-Get-NetAdapter -IncludeHidden | Where-Object {$_.Name -like '*pwdtt*'}   # пусто = чисто
+Get-NetAdapter -IncludeHidden | Where-Object {$_.Name -like '*xwdtt*'}   # пусто = чисто
 Get-NetRoute -DestinationPrefix '0.0.0.0/0'                              # default на Ethernet
 ```
 
 ### `--help` у подкоманд
 
 ```text
-pwdtt connect --help    pwdtt ping --help    pwdtt servers --help
-pwdtt settings --help   pwdtt route --help    pwdtt ips --help
+xwdtt connect --help    xwdtt ping --help    xwdtt servers --help
+xwdtt settings --help   xwdtt route --help    xwdtt ips --help
 ```
 Все возвращают exit **0**; неизвестная подкоманда — exit **2**.

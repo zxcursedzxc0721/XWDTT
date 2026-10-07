@@ -3,8 +3,8 @@ package backend_test
 import (
 	"testing"
 
-	"pwdtt/backend"
-	"pwdtt/cli"
+	"xwdtt/backend"
+	"xwdtt/cli"
 )
 
 // ═══════════════════════════════════════════════════

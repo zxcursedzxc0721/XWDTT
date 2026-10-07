@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // connectValueFlags — флаги connect, поглощающие значение (для разбора
@@ -125,14 +125,14 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 		if prof, err = app.GetProfile(target); err != nil {
 			fmt.Fprintf(os.Stderr, "профиль %q не найден.\n", target)
 			listProfileNames(app.Store(), os.Stderr)
-			fmt.Fprintln(os.Stderr, `Добавьте сервер: pwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ"`)
+			fmt.Fprintln(os.Stderr, `Добавьте сервер: xwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ"`)
 			return 1
 		}
 	}
 
 	hashes := nonEmpty(prof.Hashes)
 	if len(hashes) == 0 {
-		fmt.Fprintf(os.Stderr, "в профиле %q нет хешей VK. Добавьте: pwdtt servers set-hashes %q h1,h2,...\n", profName, profName)
+		fmt.Fprintf(os.Stderr, "в профиле %q нет хешей VK. Добавьте: xwdtt servers set-hashes %q h1,h2,...\n", profName, profName)
 		return 1
 	}
 
@@ -275,7 +275,7 @@ func installSignalWatcher(app *backend.App, p *printer) {
 }
 
 func connectUsage() {
-	fmt.Fprint(os.Stderr, `Использование: pwdtt connect [флаги] <имя|wdtt://ссылка>
+	fmt.Fprint(os.Stderr, `Использование: xwdtt connect [флаги] <имя|wdtt://ссылка>
 
 Флаги:
   -workers N            число воркеров (по умолчанию: max(9, хеши*9))
@@ -288,7 +288,7 @@ func connectUsage() {
                         порт raw_port, дефолт 56003)
 
 Примеры:
-  pwdtt connect "Мой сервер"
-  pwdtt connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
+  xwdtt connect "Мой сервер"
+  xwdtt connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
 `)
 }

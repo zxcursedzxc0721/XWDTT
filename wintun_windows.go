@@ -5,7 +5,7 @@ package main
 import (
 	_ "embed"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 //go:embed assets/wintun.dll

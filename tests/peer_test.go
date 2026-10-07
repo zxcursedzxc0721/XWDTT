@@ -8,7 +8,7 @@ package backend_test
 import (
 	"testing"
 
-	"pwdtt/cli"
+	"xwdtt/cli"
 )
 
 func TestPeerAddrForMode_DTLSUnchanged(t *testing.T) {

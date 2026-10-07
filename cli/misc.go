@@ -6,11 +6,11 @@ import (
 	"runtime"
 	"strings"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 func cmdVersion() int {
-	fmt.Printf("PWDTT %s (%s/%s, %s)\n", backend.Version, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	fmt.Printf("XWDTT %s (%s/%s, %s)\n", backend.Version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 	return 0
 }
 

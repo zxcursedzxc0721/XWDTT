@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
-// runInteractive — режим по умолчанию: промпт pwdtt> с командами.
+// runInteractive — режим по умолчанию: промпт xwdtt> с командами.
 // Логи печатаются поверх промпта; строка ввода перерисовывается после событий.
 func runInteractive() int {
 	// Права: интерактивный режим умеет connect/pause — запрашиваем UAC один раз
@@ -26,7 +26,7 @@ func runInteractive() int {
 
 	installSignalWatcher(app, p)
 
-	fmt.Printf("PWDTT %s — интерактивный режим. Команда help — справка, quit — выход.\n", backend.Version)
+	fmt.Printf("XWDTT %s — интерактивный режим. Команда help — справка, quit — выход.\n", backend.Version)
 
 	sc := bufio.NewScanner(os.Stdin)
 	for {

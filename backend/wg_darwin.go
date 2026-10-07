@@ -78,7 +78,7 @@ func (w *WG) applyDarwin(confText string, turnIPs []string, policy RoutePolicy, 
 	}
 
 	// Сокет, на который выйдет helper
-	sockDir, err := os.MkdirTemp("", "pwdtt-wg-")
+	sockDir, err := os.MkdirTemp("", "xwdtt-wg-")
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func runCmdDarwin(name string, args ...string) error {
 }
 
 // ═══════════════════════════════════════════════════
-// HELPER SIDE (запускается от root: pwdtt --wg-helper …)
+// HELPER SIDE (запускается от root: xwdtt --wg-helper …)
 // ═══════════════════════════════════════════════════
 
 // RunWGHelperDarwin — точка входа режима --wg-helper (вызывается из main_darwin.go).

@@ -122,7 +122,7 @@ func (p *printer) showPrompt() {
 }
 
 func (p *printer) showPromptLocked() {
-	fmt.Fprint(p.out, p.c(cCyan, "pwdtt> "))
+	fmt.Fprint(p.out, p.c(cCyan, "xwdtt> "))
 	p.activeLine = "prompt"
 }
 

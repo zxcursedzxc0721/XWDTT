@@ -15,21 +15,21 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
-          name: pwdtt-linux-amd64
+          name: xwdtt-linux-amd64
           path: dist
 
       - name: Download Windows artifact
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
-          name: pwdtt-windows-amd64
+          name: xwdtt-windows-amd64
           path: dist
 
       - name: Download macOS artifact
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
-          name: pwdtt-macos
+          name: xwdtt-macos
           path: dist
 
       - name: List dist contents
@@ -40,11 +40,11 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/pwdtt-linux-amd64
-            dist/pwdtt-windows-amd64.exe
-            dist/PWDTT-macos.zip
+            dist/xwdtt-linux-amd64
+            dist/xwdtt-windows-amd64.exe
+            dist/XWDTT-macos.zip
           body: |
-            ## PWDTT v1.6.0
+            ## XWDTT v1.6.0
 
             **Транспорт и ядро:**
             - TURN TCP транспорт (переключатель UDP/TCP в настройках)

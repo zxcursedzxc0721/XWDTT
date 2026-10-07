@@ -21,7 +21,7 @@ type LogEntry struct {
 func (a *App) GenerateReport(_ []LogEntry) string {
 	var sb strings.Builder
 
-	sb.WriteString("=== PWDTT Bug Report ===\n\n")
+	sb.WriteString("=== XWDTT Bug Report ===\n\n")
 
 	// === Устройство ===
 	sb.WriteString("## Device\n")

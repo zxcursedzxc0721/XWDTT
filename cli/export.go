@@ -3,7 +3,7 @@ package cli
 // Экспорт-обёртки для тестов пакета tests/ (см. tests/help_test.go).
 // В проде подкоманды вызываются через Run/dispatchInteractive.
 
-import "pwdtt/backend"
+import "xwdtt/backend"
 
 func ServersCmdForTest(st *backend.Store, args []string) int {
 	return serversCmd(st, args)

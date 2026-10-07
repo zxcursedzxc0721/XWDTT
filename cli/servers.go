@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // runServers — отдельный вызов (без моста): только хранилище.
@@ -50,7 +50,7 @@ func serversCmd(st *backend.Store, args []string) int {
 func serversList(st *backend.Store) int {
 	profiles := st.ListProfiles()
 	if len(profiles) == 0 {
-		fmt.Println("Серверов нет. Добавьте: pwdtt servers add \"wdtt://...\"")
+		fmt.Println("Серверов нет. Добавьте: xwdtt servers add \"wdtt://...\"")
 		return 0
 	}
 	names := make([]string, 0, len(profiles))
@@ -141,7 +141,7 @@ func serversRm(st *backend.Store, args []string) int {
 
 func serversSetHashes(st *backend.Store, args []string) int {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "использование: pwdtt servers set-hashes <имя> h1,h2,...")
+		fmt.Fprintln(os.Stderr, "использование: xwdtt servers set-hashes <имя> h1,h2,...")
 		return 2
 	}
 	p, err := st.LoadProfile(args[0])
@@ -262,7 +262,7 @@ func parseEditFlags(flagArgs []string, p *backend.ProfileData, name string) (*ba
 }
 
 func serversUsage() {
-	fmt.Fprint(os.Stderr, `Использование: pwdtt servers <подкоманда>
+	fmt.Fprint(os.Stderr, `Использование: xwdtt servers <подкоманда>
 
   list                                список серверов
   add <wdtt://...>                    добавить/обновить по ссылке

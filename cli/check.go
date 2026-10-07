@@ -11,15 +11,15 @@ import (
 	"strings"
 	"time"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 	core "wg-turn-client"
 )
 
-// serversCheck — `pwdtt servers check <имя>`: по каждому хешу запрашивает
+// serversCheck — `xwdtt servers check <имя>`: по каждому хешу запрашивает
 // креды у VK и печатает статус. Права администратора не нужны (без маршрутов).
 func serversCheck(st *backend.Store, args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "использование: pwdtt servers check <имя>")
+		fmt.Fprintln(os.Stderr, "использование: xwdtt servers check <имя>")
 		return 2
 	}
 	prof, err := st.LoadProfile(args[0])
@@ -31,7 +31,7 @@ func serversCheck(st *backend.Store, args []string) int {
 
 	hashes := nonEmpty(prof.Hashes)
 	if len(hashes) == 0 {
-		fmt.Fprintf(os.Stderr, "в профиле %q нет хешей. Добавьте: pwdtt servers set-hashes %q h1,h2,...\n", args[0], args[0])
+		fmt.Fprintf(os.Stderr, "в профиле %q нет хешей. Добавьте: xwdtt servers set-hashes %q h1,h2,...\n", args[0], args[0])
 		return 1
 	}
 

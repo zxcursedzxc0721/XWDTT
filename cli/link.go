@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // WdttLink — разобранная ссылка на сервер (wdtt:// или qwdtt://config?...).

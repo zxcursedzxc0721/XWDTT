@@ -1,4 +1,4 @@
-module pwdtt
+module xwdtt
 
 go 1.26
 

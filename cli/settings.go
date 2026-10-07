@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // validFingerprints — значения, которые понимает core/profiles.go.
@@ -48,7 +48,7 @@ func settingsCmd(st *backend.Store, app *backend.App, args []string) int {
 		return 0
 	case "set":
 		if len(args) != 3 {
-			fmt.Fprintln(os.Stderr, "использование: pwdtt settings set <ключ> <значение>")
+			fmt.Fprintln(os.Stderr, "использование: xwdtt settings set <ключ> <значение>")
 			settingsUsage()
 			return 2
 		}
@@ -105,7 +105,7 @@ func settingsSet(st *backend.Store, app *backend.App, key, value string) int {
 		}
 		if value == "video" && !s.ObfsAccepted {
 			fmt.Fprintln(os.Stderr, "режим video требует принятия предупреждения об обфускации:")
-			fmt.Fprintln(os.Stderr, "  pwdtt settings set obfs-accepted on")
+			fmt.Fprintln(os.Stderr, "  xwdtt settings set obfs-accepted on")
 			return 1
 		}
 		s.ObfsMode = value
@@ -158,8 +158,8 @@ func settingsSet(st *backend.Store, app *backend.App, key, value string) int {
 
 func settingsUsage() {
 	fmt.Fprintf(os.Stderr, "Ключи: %s\n\n", strings.Join(settingsKeys, ", "))
-	fmt.Fprint(os.Stderr, `Использование: pwdtt settings get
-       pwdtt settings set <ключ> <значение>
+	fmt.Fprint(os.Stderr, `Использование: xwdtt settings get
+       xwdtt settings set <ключ> <значение>
 
 Значения:
   autostart      on|off

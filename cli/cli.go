@@ -1,4 +1,4 @@
-// Package cli — консольный интерфейс PWDTT.
+// Package cli — консольный интерфейс XWDTT.
 // Подкоманды + режим по умолчанию (без аргументов — интерактивный промпт).
 package cli
 
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // Run — точка входа CLI, возвращает exit code.
@@ -64,28 +64,28 @@ func ensureElevated() int {
 }
 
 func usage() {
-	fmt.Print(`PWDTT — консольный VPN-клиент
+	fmt.Print(`XWDTT — консольный VPN-клиент
 
 Использование:
-  pwdtt                                    интерактивный режим
-  pwdtt connect [флаги] <имя|wdtt://ссылка>  подключить (Ctrl+C — отключить)
-  pwdtt servers <подкоманда>               управление серверами
-  pwdtt settings get|set <ключ> [значение] настройки
-  pwdtt route [full|split]                 режим маршрутизации (тюнелирование)
-  pwdtt ips list|add ...|rm ...            список адресов split-режима
-  pwdtt ping [имя]                          замер RTT до TURN-сервера
-  pwdtt update | report | version | help
+  xwdtt                                    интерактивный режим
+  xwdtt connect [флаги] <имя|wdtt://ссылка>  подключить (Ctrl+C — отключить)
+  xwdtt servers <подкоманда>               управление серверами
+  xwdtt settings get|set <ключ> [значение] настройки
+  xwdtt route [full|split]                 режим маршрутизации (тюнелирование)
+  xwdtt ips list|add ...|rm ...            список адресов split-режима
+  xwdtt ping [имя]                          замер RTT до TURN-сервера
+  xwdtt update | report | version | help
 
 Серверы:
-  pwdtt servers list
-  pwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ[:ХЕШИ][#название]"
-  pwdtt servers show <имя>
-  pwdtt servers rm <имя>
-  pwdtt servers set-hashes <имя> h1,h2,...
-  pwdtt servers check <имя>                 проверить хеши VK
-  pwdtt servers edit <имя> [-peer A] [-password P] [-name N] ...
+  xwdtt servers list
+  xwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ[:ХЕШИ][#название]"
+  xwdtt servers show <имя>
+  xwdtt servers rm <имя>
+  xwdtt servers set-hashes <имя> h1,h2,...
+  xwdtt servers check <имя>                 проверить хеши VK
+  xwdtt servers edit <имя> [-peer A] [-password P] [-name N] ...
 
-Настройки (pwdtt settings set <ключ> <значение>):
+Настройки (xwdtt settings set <ключ> <значение>):
   autostart on|off        автозапуск при входе в систему
   obfs audio|video        режим обфускации
   obfs-accepted on|off    принять предупреждение (нужно для video)

@@ -2,7 +2,7 @@
   <img src="assets/icons/icon.png" width="96" />
 </p>
 
-<h1 align="center">PWDTT</h1>
+<h1 align="center">XWDTT</h1>
 
 <p align="center">
   Консольный VPN-клиент, который туннелирует трафик через TURN-серверы VK,<br>
@@ -39,7 +39,7 @@
 
 ```bash
 # Одной командой (скачает и запустит):
-sudo bash <(curl -s https://raw.githubusercontent.com/luminescq/PWDTT/main/assets/install-sudoers.sh)
+sudo bash <(curl -s https://raw.githubusercontent.com/luminescq/XWDTT/main/assets/install-sudoers.sh)
 ```
 
 Или вручную через `visudo` — добавьте в `/etc/sudoers`:
@@ -47,22 +47,22 @@ sudo bash <(curl -s https://raw.githubusercontent.com/luminescq/PWDTT/main/asset
 your_user ALL=(ALL) NOPASSWD: /usr/bin/ip, /usr/bin/wg
 ```
 
-Скрипт автоматически определит текущего пользователя и создаст файл `/etc/sudoers.d/pwdtt`.
+Скрипт автоматически определит текущего пользователя и создаст файл `/etc/sudoers.d/xwdtt`.
 
 **2. Запустите:**
 
 ```bash
-chmod +x pwdtt-linux-amd64
-./pwdtt-linux-amd64
+chmod +x xwdtt-linux-amd64
+./xwdtt-linux-amd64
 ```
 
 ### Windows
 
-Скачайте `pwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/PWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен. Права администратора запрашиваются автоматически (UAC) при подключении.
+Скачайте `xwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/XWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен. Права администратора запрашиваются автоматически (UAC) при подключении.
 
 ### macOS
 
-Скачайте `PWDTT-macos.zip` из [Releases](https://github.com/luminescq/PWDTT/releases), распакуйте и запустите бинарник. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
+Скачайте `XWDTT-macos.zip` из [Releases](https://github.com/luminescq/XWDTT/releases), распакуйте и запустите бинарник. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
 
 > Universal бинарник: работает на Intel и Apple Silicon (M1/M2/M3/M4).
 
@@ -75,22 +75,22 @@ chmod +x pwdtt-linux-amd64
 Запуск без аргументов открывает **интерактивный режим**:
 
 ```bash
-./pwdtt
+./xwdtt
 ```
 
 ### Команды
 
 | Команда | Описание |
 |---|---|
-| `pwdtt` | интерактивный промпт (все те же команды + `stats`, `logs`, `quit`) |
-| `pwdtt connect [флаги] <имя\|wdtt://ссылка>` | подключить туннель (Ctrl+C — отключить) |
-| `pwdtt ping [имя]` | замер RTT до TURN-сервера, без поднятия туннеля |
-| `pwdtt pause` / `pwdtt resume` | пауза / продолжить (в интерактиве; из отдельного процесса недоступны — туннель живёт в своём процессе) |
-| `pwdtt route [full\|split]` | режим маршрутизации (см. ниже) |
-| `pwdtt ips list \| add ...\| rm ...` | список адресов split-режима |
-| `pwdtt servers list\|add\|show\|rm\|set-hashes\|check\|edit` | управление серверами |
-| `pwdtt settings get\|set <ключ> <значение>` | настройки |
-| `pwdtt update` / `pwdtt report` / `pwdtt version` | обновление / отчёт / версия |
+| `xwdtt` | интерактивный промпт (все те же команды + `stats`, `logs`, `quit`) |
+| `xwdtt connect [флаги] <имя\|wdtt://ссылка>` | подключить туннель (Ctrl+C — отключить) |
+| `xwdtt ping [имя]` | замер RTT до TURN-сервера, без поднятия туннеля |
+| `xwdtt pause` / `xwdtt resume` | пауза / продолжить (в интерактиве; из отдельного процесса недоступны — туннель живёт в своём процессе) |
+| `xwdtt route [full\|split]` | режим маршрутизации (см. ниже) |
+| `xwdtt ips list \| add ...\| rm ...` | список адресов split-режима |
+| `xwdtt servers list\|add\|show\|rm\|set-hashes\|check\|edit` | управление серверами |
+| `xwdtt settings get\|set <ключ> <значение>` | настройки |
+| `xwdtt update` / `xwdtt report` / `xwdtt version` | обновление / отчёт / версия |
 
 ### Флаги `connect`
 
@@ -106,9 +106,9 @@ chmod +x pwdtt-linux-amd64
 
 Примеры:
 ```bash
-pwdtt connect "Мой сервер"
-pwdtt connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
-pwdtt connect "Мой сервер" -raw -notls
+xwdtt connect "Мой сервер"
+xwdtt connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
+xwdtt connect "Мой сервер" -raw -notls
 ```
 
 ### Ссылки
@@ -135,19 +135,19 @@ wdtt://1.2.3.4:56000:56001:0:mypassword:AbCdEfGh,XyZ12345#Мой сервер
 Режим выбирается командой `route` (хранится в настройках):
 
 ```bash
-pwdtt route          # показать текущий режим
-pwdtt route full     # через VPN — весь трафик (по умолчанию)
-pwdtt route split    # через VPN — только адреса из списка
+xwdtt route          # показать текущий режим
+xwdtt route full     # через VPN — весь трафик (по умолчанию)
+xwdtt route split    # через VPN — только адреса из списка
 ```
 
 В режиме `split` трафик идёт через туннель **только** к адресам из списка, остальное — напрямую. Список общий для всех серверов:
 
 ```bash
-pwdtt ips list
-pwdtt ips add 1.2.3.4          # IP
-pwdtt ips add 10.0.0.0/24      # CIDR
-pwdtt ips add vk.com           # домен — резолвится с кэшем (10 мин)
-pwdtt ips rm vk.com
+xwdtt ips list
+xwdtt ips add 1.2.3.4          # IP
+xwdtt ips add 10.0.0.0/24      # CIDR
+xwdtt ips add vk.com           # домен — резолвится с кэшем (10 мин)
+xwdtt ips rm vk.com
 ```
 
 Ограничения: 100 записей, 400 маршрутов. Домены резолвятся при подключении и кэшируются в `dnscache.json`; недоступный домен при наличии старого кэша использует его.
@@ -159,13 +159,13 @@ TURN/VK/DNS-адреса в режиме `full` идут мимо туннеля
 ## Настройки
 
 ```bash
-pwdtt settings get
-pwdtt settings set autostart on|off     # автозапуск
-pwdtt settings set obfs audio|video     # режим обфускации
-pwdtt settings set turn-tcp on|off      # TCP-транспорт TURN
-pwdtt settings set workers N            # воркеров (0 = авто)
-pwdtt settings set fingerprint ИМЯ      # chrome|firefox|safari|android|ios
-pwdtt settings set doh РЕЖИМ            # DNS-over-HTTPS (см. ниже)
+xwdtt settings get
+xwdtt settings set autostart on|off     # автозапуск
+xwdtt settings set obfs audio|video     # режим обфускации
+xwdtt settings set turn-tcp on|off      # TCP-транспорт TURN
+xwdtt settings set workers N            # воркеров (0 = авто)
+xwdtt settings set fingerprint ИМЯ      # chrome|firefox|safari|android|ios
+xwdtt settings set doh РЕЖИМ            # DNS-over-HTTPS (см. ниже)
 ```
 
 ### DNS over HTTPS
@@ -173,11 +173,11 @@ pwdtt settings set doh РЕЖИМ            # DNS-over-HTTPS (см. ниже)
 Обычный DNS-резолв утекает провайдеру — кто вы посещаете. DoH шлёт DNS-запросы по HTTPS уже внутри туннеля:
 
 ```bash
-pwdtt settings set doh yandex      # по умолчанию
-pwdtt settings set doh cloudflare
-pwdtt settings set doh google
-pwdtt settings set doh doh:URL      # свой DoH-провайдер
-pwdtt settings set doh custom:IP    # свой обычный DNS-сервер
+xwdtt settings set doh yandex      # по умолчанию
+xwdtt settings set doh cloudflare
+xwdtt settings set doh google
+xwdtt settings set doh doh:URL      # свой DoH-провайдер
+xwdtt settings set doh custom:IP    # свой обычный DNS-сервер
 ```
 
 Доступны также режимы `doh-yandex` / `doh-cloudflare` / `doh-google` (то же самое, явная запись).
@@ -187,8 +187,8 @@ pwdtt settings set doh custom:IP    # свой обычный DNS-сервер
 ## Проверка сервера и хешей
 
 ```bash
-pwdtt servers check <имя>   # проверить VK-хеши: ok/captcha/dead/limited/network
-pwdtt ping [имя]            # RTT до TURN-сервера (аллокация + хендшейк)
+xwdtt servers check <имя>   # проверить VK-хеши: ok/captcha/dead/limited/network
+xwdtt ping [имя]            # RTT до TURN-сервера (аллокация + хендшейк)
 ```
 
 ---
@@ -198,21 +198,21 @@ pwdtt ping [имя]            # RTT до TURN-сервера (аллокаци�
 **Зависимости:** только Go 1.26+. Node.js, Wails и webkit больше не нужны — интерфейс полностью консольный.
 
 ```bash
-git clone https://github.com/luminescq/PWDTT
-cd PWDTT
+git clone https://github.com/luminescq/XWDTT
+cd XWDTT
 
 go build ./...                # проверка компиляции
 go test ./...                 # тесты (core: cd core && go test ./...)
 
-go build -o pwdtt             # нативная сборка
+go build -o xwdtt             # нативная сборка
 ```
 
 Кросс-сборка:
 
 ```bash
-GOOS=windows GOARCH=amd64 go build -o pwdtt-windows-amd64.exe
-GOOS=linux   GOARCH=amd64 go build -o pwdtt-linux-amd64
-GOOS=darwin  GOARCH=arm64 go build -o pwdtt-macos-arm64
+GOOS=windows GOARCH=amd64 go build -o xwdtt-windows-amd64.exe
+GOOS=linux   GOARCH=amd64 go build -o xwdtt-linux-amd64
+GOOS=darwin  GOARCH=arm64 go build -o xwdtt-macos-arm64
 ```
 
 > `assets/wintun.dll` встраивается в Windows-бинарник автоматически (`//go:embed`).
@@ -226,15 +226,15 @@ CI (`.github/workflows/build.yml`) собирает Linux/Windows/macOS арте
 Соберите отчёт командой:
 
 ```bash
-pwdtt report
+xwdtt report
 ```
 
-Вывод содержит версию ОС, версию приложения, состояние настроек и логи текущей сессии — скопируйте его в [Issue](https://github.com/luminescq/PWDTT/issues/new).
+Вывод содержит версию ОС, версию приложения, состояние настроек и логи текущей сессии — скопируйте его в [Issue](https://github.com/luminescq/XWDTT/issues/new).
 
 ---
 
 > [!IMPORTANT]
-> Приложение является техническим инструментом для защищённого туннелирования собственного трафика через ваш сервер. Автор не призывает использовать PWDTT для противоправных целей или нарушения правил сторонних сервисов.
+> Приложение является техническим инструментом для защищённого туннелирования собственного трафика через ваш сервер. Автор не призывает использовать XWDTT для противоправных целей или нарушения правил сторонних сервисов.
 
 ---
 

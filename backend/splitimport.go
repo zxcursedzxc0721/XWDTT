@@ -1,6 +1,6 @@
 package backend
 
-// Импорт больших списков адресов для split-режима (`pwdtt ips import`).
+// Импорт больших списков адресов для split-режима (`xwdtt ips import`).
 //
 // Форматы файла (JSON):
 //

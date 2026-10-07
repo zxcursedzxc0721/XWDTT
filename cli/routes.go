@@ -5,13 +5,13 @@ import (
 	"os"
 	"strings"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // runRoute — показать/сменить режим маршрутизации.
 //
-//	pwdtt route           → текущий режим
-//	pwdtt route full|split
+//	xwdtt route           → текущий режим
+//	xwdtt route full|split
 func runRoute(args []string) int {
 	st := backend.NewStore()
 
@@ -37,7 +37,7 @@ func runRoute(args []string) int {
 		printRoute(s)
 		if args[0] == backend.RouteModeSplit && len(s.SplitRoutes) == 0 {
 			fmt.Println("Внимание: список пуст — через VPN не пойдёт ничего.")
-			fmt.Println("Добавьте адреса: pwdtt ips add vk.com")
+			fmt.Println("Добавьте адреса: xwdtt ips add vk.com")
 		}
 		return 0
 	default:
@@ -62,10 +62,10 @@ func printRoute(s backend.AppSettings) {
 
 // runIps — управление глобальным списком адресов split-режима.
 //
-//	pwdtt ips list
-//	pwdtt ips add <ip|cidr|домен>...
-//	pwdtt ips import <файл.json>
-//	pwdtt ips rm <ip|cidr|домен>...
+//	xwdtt ips list
+//	xwdtt ips add <ip|cidr|домен>...
+//	xwdtt ips import <файл.json>
+//	xwdtt ips rm <ip|cidr|домен>...
 func runIps(args []string) int {
 	return ipsCmd(backend.NewStore(), args)
 }
@@ -96,7 +96,7 @@ func ipsCmd(st *backend.Store, args []string) int {
 func ipsList(st *backend.Store) int {
 	s := st.LoadSettings()
 	if len(s.SplitRoutes) == 0 {
-		fmt.Println("Список пуст. Добавьте: pwdtt ips add vk.com")
+		fmt.Println("Список пуст. Добавьте: xwdtt ips add vk.com")
 		return 0
 	}
 	fmt.Printf("Список split-маршрутов (%d шт.)%s:\n", len(s.SplitRoutes), routeModeSuffix(s))
@@ -171,7 +171,7 @@ func ipsAdd(st *backend.Store, args []string) int {
 // а показывает сводку.
 func ipsImport(st *backend.Store, args []string) int {
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "использование: pwdtt ips import <файл.json>")
+		fmt.Fprintln(os.Stderr, "использование: xwdtt ips import <файл.json>")
 		return 2
 	}
 	data, err := os.ReadFile(args[0])
@@ -265,20 +265,20 @@ func printRouteHint(s backend.AppSettings) {
 	if s.RouteMode == backend.RouteModeSplit {
 		fmt.Println("Изменения вступят в силу при следующем подключении.")
 	} else {
-		fmt.Println("Список сохранён (действует в режиме split: pwdtt route split).")
+		fmt.Println("Список сохранён (действует в режиме split: xwdtt route split).")
 	}
 }
 
 func routeUsage() {
-	fmt.Fprint(os.Stderr, `Использование: pwdtt route [full|split]
+	fmt.Fprint(os.Stderr, `Использование: xwdtt route [full|split]
 
   full   весь трафик через VPN (по умолчанию)
-  split  через VPN только адреса из списка (pwdtt ips)
+  split  через VPN только адреса из списка (xwdtt ips)
 `)
 }
 
 func ipsUsage() {
-	fmt.Fprint(os.Stderr, `Использование: pwdtt ips <подкоманда>
+	fmt.Fprint(os.Stderr, `Использование: xwdtt ips <подкоманда>
 
   list                    показать список
   add <ip|cidr|домен>...  добавить (домены резолвятся при подключении)
@@ -286,8 +286,8 @@ func ipsUsage() {
   rm <ip|cidr|домен>...   удалить
 
 Примеры:
-  pwdtt ips add 1.2.3.4 10.0.0.0/8 vk.com
-  pwdtt ips import "C:\Downloads\ip-list.json"
-  pwdtt route split
+  xwdtt ips add 1.2.3.4 10.0.0.0/8 vk.com
+  xwdtt ips import "C:\Downloads\ip-list.json"
+  xwdtt route split
 `)
 }

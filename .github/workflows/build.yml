@@ -46,24 +46,24 @@ jobs:
 
       # Обычная go build: Wails/Node/webkit больше не нужны (Этап 1)
       - name: Build Linux
-        run: GOOS=linux GOARCH=amd64 go build -o pwdtt-linux-amd64
+        run: GOOS=linux GOARCH=amd64 go build -o xwdtt-linux-amd64
 
       - name: Build Windows
-        run: GOOS=windows GOARCH=amd64 go build -o pwdtt-windows-amd64.exe
+        run: GOOS=windows GOARCH=amd64 go build -o xwdtt-windows-amd64.exe
 
       - name: Upload Linux artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: pwdtt-linux-amd64
-          path: pwdtt-linux-amd64
+          name: xwdtt-linux-amd64
+          path: xwdtt-linux-amd64
 
       - name: Upload Windows artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: pwdtt-windows-amd64
-          path: pwdtt-windows-amd64.exe
+          name: xwdtt-windows-amd64
+          path: xwdtt-windows-amd64.exe
 
   build-macos:
     runs-on: macos-latest
@@ -78,17 +78,17 @@ jobs:
 
       - name: "Build macOS (universal: amd64 + arm64)"
         run: |
-          GOOS=darwin GOARCH=amd64 go build -o pwdtt-macos-amd64
-          GOOS=darwin GOARCH=arm64 go build -o pwdtt-macos-arm64
-          lipo -create -output pwdtt-macos pwdtt-macos-amd64 pwdtt-macos-arm64
+          GOOS=darwin GOARCH=amd64 go build -o xwdtt-macos-amd64
+          GOOS=darwin GOARCH=arm64 go build -o xwdtt-macos-arm64
+          lipo -create -output xwdtt-macos xwdtt-macos-amd64 xwdtt-macos-arm64
 
       - name: Zip macOS binary
         if: github.event_name != 'pull_request'
-        run: zip PWDTT-macos.zip pwdtt-macos
+        run: zip XWDTT-macos.zip xwdtt-macos
 
       - name: Upload macOS artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: pwdtt-macos
-          path: PWDTT-macos.zip
+          name: xwdtt-macos
+          path: XWDTT-macos.zip

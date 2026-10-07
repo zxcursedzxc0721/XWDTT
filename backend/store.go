@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,11 +22,11 @@ const maxProfileNameRunes = 100
 //
 // Структура файлов:
 //
-//	~/.config/pwdtt/config.json        — AppSettings
-//	~/.config/pwdtt/servers/<name>.json — ProfileData (серверы)
-//	~/.config/pwdtt/logs/*.log          — логи сессий
+//	~/.config/xwdtt/config.json        — AppSettings
+//	~/.config/xwdtt/servers/<name>.json — ProfileData (серверы)
+//	~/.config/xwdtt/logs/*.log          — логи сессий
 type Store struct {
-	baseDir string // ~/.config/pwdtt
+	baseDir string // ~/.config/xwdtt
 }
 
 // NewStore создаёт Store и создаёт директории если нужно.
@@ -238,13 +239,47 @@ func (s *Store) ReadLatestLog() string {
 // HELPERS
 // ═══════════════════════════════════════════════════
 
-// configDir возвращает ~/.config/pwdtt
+// configDir возвращает каталог настроек (xwdtt).
+// Перенос из легаси-каталога старого названия проекта выполняется
+// НЕ здесь, а явно в main (MigrateLegacyConfigDir): side-effect в геттере
+// выполнялся бы даже в тестах, вызывающих Store без подмены HOME/AppData,
+// и трогал бы реальный каталог пользователя.
 func configDir() string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.Getenv("HOME")
 	}
-	return filepath.Join(base, "pwdtt")
+	return filepath.Join(base, "xwdtt")
+}
+
+// MigrateLegacyConfigDir переносит настройки из каталога старого названия
+// проекта (pwdtt → xwdtt) одним rename: если новый каталог ещё не создан,
+// а старый существует — переименовываем его целиком (настройки, профили
+// серверов, логи), чтобы смена названия не теряла данные. Вызывается один
+// раз из main. Ошибки не фатальны — при сбое старый каталог остаётся.
+func MigrateLegacyConfigDir() {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		base = os.Getenv("HOME")
+	}
+	newDir := filepath.Join(base, "xwdtt")
+	if _, err := os.Stat(newDir); !os.IsNotExist(err) {
+		return // уже новый каталог — переносить нечего
+	}
+	legacy := filepath.Join(base, "pwdtt")
+	if !isDir(legacy) {
+		return
+	}
+	if err := os.Rename(legacy, newDir); err != nil {
+		log.Printf("[CONFIG] не удалось перенести легаси-каталог %s: %v", legacy, err)
+		return
+	}
+	log.Printf("[CONFIG] настройки перенесены из %s в %s", legacy, newDir)
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
 }
 
 // atomicWrite записывает файл атомарно: tmp → rename.

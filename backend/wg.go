@@ -22,10 +22,10 @@ import (
 // WG — управление WireGuard интерфейсом.
 var wg = &WG{}
 
-const wgIface = "pwdtt-wg"
+const wgIface = "xwdtt-wg"
 
 // Статический GUID для Wintun задан в wg_windows_init.go (windows-only),
-// чтобы не плодить адаптеры (pwdtt-wg 2, pwdtt-wg 3) при крашах приложения.
+// чтобы не плодить адаптеры (xwdtt-wg 2, xwdtt-wg 3) при крашах приложения.
 
 // ═══════════════════════════════════════════════════
 // PUBLIC API

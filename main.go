@@ -3,9 +3,11 @@ package main
 import (
 	"os"
 
-	"pwdtt/cli"
+	"xwdtt/backend"
+	"xwdtt/cli"
 )
 
 func main() {
+	backend.MigrateLegacyConfigDir()
 	os.Exit(cli.Run(os.Args[1:]))
 }

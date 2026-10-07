@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // newTestStore создаёт Store с временной директорией.
@@ -14,20 +14,20 @@ func newTestStore(t *testing.T) *backend.Store {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	// os.UserConfigDir() на Windows читает %AppData%, на Linux — XDG_CONFIG_HOME:
-	// без подмены тесты пишут в РЕАЛЬНЫЙ конфиг пользователя (%APPDATA%\pwdtt)
+	// без подмены тесты пишут в РЕАЛЬНЫЙ конфиг пользователя (%APPDATA%\xwdtt)
 	t.Setenv("AppData", filepath.Join(dir, "AppData", "Roaming"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
 	return backend.NewStore()
 }
 
-// pwdttDir — зеркало configDir() из store.go: где Store реально держит файлы.
-func pwdttDir(t *testing.T) string {
+// xwdttDir — зеркало configDir() из store.go: где Store реально держит файлы.
+func xwdttDir(t *testing.T) string {
 	t.Helper()
 	base, err := os.UserConfigDir()
 	if err != nil {
 		base = os.Getenv("HOME")
 	}
-	return filepath.Join(base, "pwdtt")
+	return filepath.Join(base, "xwdtt")
 }
 
 // ═══════════════════════════════════════════════════
@@ -48,7 +48,7 @@ func TestLoadSettings_FileNotExists(t *testing.T) {
 
 func TestLoadSettings_InvalidJSON(t *testing.T) {
 	s := newTestStore(t)
-	path := filepath.Join(pwdttDir(t), "config.json")
+	path := filepath.Join(xwdttDir(t), "config.json")
 	os.WriteFile(path, []byte(`{invalid json`), 0o644)
 
 	settings := s.LoadSettings()
@@ -81,7 +81,7 @@ func TestLoadSaveSettings_Roundtrip(t *testing.T) {
 
 func TestLoadSettings_EmptyFile(t *testing.T) {
 	s := newTestStore(t)
-	path := filepath.Join(pwdttDir(t), "config.json")
+	path := filepath.Join(xwdttDir(t), "config.json")
 	os.WriteFile(path, []byte{}, 0o644)
 
 	settings := s.LoadSettings()
@@ -92,7 +92,7 @@ func TestLoadSettings_EmptyFile(t *testing.T) {
 
 func TestLoadSettings_UnknownFields(t *testing.T) {
 	s := newTestStore(t)
-	path := filepath.Join(pwdttDir(t), "config.json")
+	path := filepath.Join(xwdttDir(t), "config.json")
 	os.WriteFile(path, []byte(`{"unknownField": true}`), 0o644)
 
 	settings := s.LoadSettings()
@@ -227,7 +227,7 @@ func TestListProfiles_Multiple(t *testing.T) {
 
 func TestListProfiles_SkipsNonJSON(t *testing.T) {
 	s := newTestStore(t)
-	serversDir := filepath.Join(pwdttDir(t), "servers")
+	serversDir := filepath.Join(xwdttDir(t), "servers")
 
 	s.SaveProfile("valid", backend.ProfileData{PeerAddr: "1.1.1.1:1111"})
 	os.WriteFile(filepath.Join(serversDir, "readme.txt"), []byte("hello"), 0o644)
@@ -281,7 +281,7 @@ func TestDeleteProfile_EmptyName(t *testing.T) {
 
 func TestCreateLogFile(t *testing.T) {
 	s := newTestStore(t)
-	logsDir := filepath.Join(pwdttDir(t), "logs")
+	logsDir := filepath.Join(xwdttDir(t), "logs")
 
 	f, err := s.CreateLogFile("1.2.3.4")
 	if err != nil {
@@ -325,7 +325,7 @@ func TestCreateLogFile_Writable(t *testing.T) {
 
 func TestOpenLogFile(t *testing.T) {
 	s := newTestStore(t)
-	logsDir := filepath.Join(pwdttDir(t), "logs")
+	logsDir := filepath.Join(xwdttDir(t), "logs")
 
 	lf := s.OpenLogFile()
 	if lf == nil {
@@ -374,7 +374,7 @@ func TestReadLatestLog_NoLogs(t *testing.T) {
 
 func TestReadLatestLog_WithLogs(t *testing.T) {
 	s := newTestStore(t)
-	logDir := filepath.Join(pwdttDir(t), "logs")
+	logDir := filepath.Join(xwdttDir(t), "logs")
 
 	os.WriteFile(filepath.Join(logDir, "2025-01-01_10-00-00.log"), []byte("old log"), 0o644)
 	os.WriteFile(filepath.Join(logDir, "2025-06-01_12-00-00.log"), []byte("latest log"), 0o644)

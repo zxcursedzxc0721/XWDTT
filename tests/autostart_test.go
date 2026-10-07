@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 func TestSetAutoStartLinux_Create(t *testing.T) {
@@ -22,7 +22,7 @@ func TestSetAutoStartLinux_Create(t *testing.T) {
 		t.Fatalf("SetAutoStartLinux(true): %v", err)
 	}
 
-	desktopPath := filepath.Join(dir, ".config", "autostart", "pwdtt.desktop")
+	desktopPath := filepath.Join(dir, ".config", "autostart", "xwdtt.desktop")
 	data, err := os.ReadFile(desktopPath)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -35,8 +35,8 @@ func TestSetAutoStartLinux_Create(t *testing.T) {
 	if !strings.Contains(content, "Type=Application") {
 		t.Error("missing Type=Application")
 	}
-	if !strings.Contains(content, "Name=PWDTT") {
-		t.Error("missing Name=PWDTT")
+	if !strings.Contains(content, "Name=XWDTT") {
+		t.Error("missing Name=XWDTT")
 	}
 	if !strings.Contains(content, "X-GNOME-Autostart-enabled=true") {
 		t.Error("missing X-GNOME-Autostart-enabled=true")
@@ -56,7 +56,7 @@ func TestSetAutoStartLinux_Remove(t *testing.T) {
 
 	// Сначала создаём
 	backend.SetAutoStartLinux(true)
-	desktopPath := filepath.Join(dir, ".config", "autostart", "pwdtt.desktop")
+	desktopPath := filepath.Join(dir, ".config", "autostart", "xwdtt.desktop")
 	if _, err := os.Stat(desktopPath); err != nil {
 		t.Fatal("desktop file should exist after SetAutoStartLinux(true)")
 	}
@@ -95,7 +95,7 @@ func TestSetAutoStartLinux_ContentFormat(t *testing.T) {
 
 	backend.SetAutoStartLinux(true)
 
-	desktopPath := filepath.Join(dir, ".config", "autostart", "pwdtt.desktop")
+	desktopPath := filepath.Join(dir, ".config", "autostart", "xwdtt.desktop")
 	data, _ := os.ReadFile(desktopPath)
 	content := string(data)
 
@@ -127,7 +127,7 @@ func TestSetAutoStartLinux_Idempotent(t *testing.T) {
 		t.Fatalf("second SetAutoStartLinux(true): %v", err)
 	}
 
-	desktopPath := filepath.Join(dir, ".config", "autostart", "pwdtt.desktop")
+	desktopPath := filepath.Join(dir, ".config", "autostart", "xwdtt.desktop")
 	if _, err := os.Stat(desktopPath); err != nil {
 		t.Fatal("desktop file should exist after double SetAutoStartLinux(true)")
 	}

@@ -81,7 +81,7 @@ func runNetshRouteScript(action string, cidrs []string, iface string) (string, e
 	if len(cidrs) == 0 {
 		return "", nil
 	}
-	f, err := os.CreateTemp("", "pwdtt-routes-*.txt")
+	f, err := os.CreateTemp("", "xwdtt-routes-*.txt")
 	if err != nil {
 		return "", err
 	}

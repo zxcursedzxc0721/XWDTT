@@ -16,7 +16,7 @@ type ConnectParams struct {
 	Raw         bool     `json:"raw,omitempty"`        // raw-IP без WireGuard (сервер -listen-raw)
 }
 
-// ProfileData — данные сервера, хранятся в ~/.config/pwdtt/servers/<name>.json.
+// ProfileData — данные сервера, хранятся в ~/.config/xwdtt/servers/<name>.json.
 type ProfileData struct {
 	PeerAddr string   `json:"peer"`      // адрес:порт VPS сервера
 	Password string   `json:"password"`  // пароль подключения
@@ -36,7 +36,7 @@ type ProfileData struct {
 	RawPort    string `json:"raw_port,omitempty"`    // порт -listen-raw (режим -raw)
 }
 
-// AppSettings — настройки приложения, хранятся в ~/.config/pwdtt/config.json.
+// AppSettings — настройки приложения, хранятся в ~/.config/xwdtt/config.json.
 type AppSettings struct {
 	AutoStart    bool   `json:"autoStart"`    // автозапуск при старте системы
 	ObfsMode     string `json:"obfsMode"`     // audio/video

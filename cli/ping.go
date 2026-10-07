@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 	core "wg-turn-client"
 )
 
@@ -54,7 +54,7 @@ func runPing(args []string) int {
 	var profName string
 	if len(posArgs) == 1 {
 		if isWdttLink(posArgs[0]) {
-			fmt.Fprintln(os.Stderr, "ping принимает имя профиля, а не ссылку. Сохраните сервер: pwdtt servers add <wdtt://...>")
+			fmt.Fprintln(os.Stderr, "ping принимает имя профиля, а не ссылку. Сохраните сервер: xwdtt servers add <wdtt://...>")
 			return 2
 		}
 		profName = posArgs[0]
@@ -68,7 +68,7 @@ func runPing(args []string) int {
 		profiles := st.ListProfiles()
 		switch len(profiles) {
 		case 0:
-			fmt.Fprintln(os.Stderr, "нет сохранённых серверов. Добавьте: pwdtt servers add \"wdtt://...\"")
+			fmt.Fprintln(os.Stderr, "нет сохранённых серверов. Добавьте: xwdtt servers add \"wdtt://...\"")
 			return 1
 		case 1:
 			for n, pr := range profiles {
@@ -149,7 +149,7 @@ func runPing(args []string) int {
 }
 
 func pingUsage() {
-	fmt.Fprint(os.Stderr, `Использование: pwdtt ping [флаги] [имя]
+	fmt.Fprint(os.Stderr, `Использование: xwdtt ping [флаги] [имя]
 
 Замер RTT до TURN-сервера (аллокация + хендшейк), туннель не поднимается.
 
@@ -160,7 +160,7 @@ func pingUsage() {
   -raw                raw-режим (GETCONF_RAW)
 
 Примеры:
-  pwdtt ping
-  pwdtt ping "Мой сервер"
+  xwdtt ping
+  xwdtt ping "Мой сервер"
 `)
 }

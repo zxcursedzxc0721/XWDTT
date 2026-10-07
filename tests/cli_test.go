@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"pwdtt/cli"
+	"xwdtt/cli"
 )
 
 // ── ParseWdttLink: wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ[:ХЕШИ][#название] ──

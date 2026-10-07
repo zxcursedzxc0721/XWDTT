@@ -125,7 +125,7 @@ func (b *Bridge) buildRoutePolicy() RoutePolicy {
 
 	splitLog := func(msg string) { b.onEvent("log", "INFO", "[WG] "+msg) }
 	if len(settings.SplitRoutes) == 0 {
-		splitLog("режим split включён, но список пуст — через VPN не пойдёт ничего. Добавьте адреса: pwdtt ips add <ip|домен>")
+		splitLog("режим split включён, но список пуст — через VPN не пойдёт ничего. Добавьте адреса: xwdtt ips add <ip|домен>")
 		return policy
 	}
 	cidrs := ResolveSplitRoutes(settings.SplitRoutes, splitLog)

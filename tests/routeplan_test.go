@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 // ═══════════════════════════════════════════════════
@@ -204,7 +204,7 @@ func TestResolveSplitRoutes_DomainFailureWithoutCache(t *testing.T) {
 func TestResolveSplitRoutes_StaleCacheFallback(t *testing.T) {
 	newTestStore(t)
 	// Просроченный кэш + недоступный DNS → берём stale (как BypassRoutes.kt)
-	writeDNSCache(t, pwdttDir(t), `{"vk.com":{"ips":["8.8.8.8"],"ts":1}}`)
+	writeDNSCache(t, xwdttDir(t), `{"vk.com":{"ips":["8.8.8.8"],"ts":1}}`)
 
 	withFakeResolver(t, func(host string) ([]string, error) {
 		return nil, os.ErrDeadlineExceeded
@@ -218,7 +218,7 @@ func TestResolveSplitRoutes_StaleCacheFallback(t *testing.T) {
 func TestResolveSplitRoutes_FreshCacheSkipsDNS(t *testing.T) {
 	newTestStore(t)
 	// Свежий кэш → резолв не нужен
-	writeDNSCache(t, pwdttDir(t), freshCacheJSON("vk.com", "9.9.9.9"))
+	writeDNSCache(t, xwdttDir(t), freshCacheJSON("vk.com", "9.9.9.9"))
 
 	withFakeResolver(t, func(host string) ([]string, error) {
 		t.Error("DNS не должен спрашиваться при свежем кэше")
@@ -241,7 +241,7 @@ func TestLoadSettings_RouteModeDefault(t *testing.T) {
 	}
 
 	// Мусор в файле → full
-	path := filepath.Join(pwdttDir(t), "config.json")
+	path := filepath.Join(xwdttDir(t), "config.json")
 	os.WriteFile(path, []byte(`{"routeMode":"banana"}`), 0o644)
 	if got := s.LoadSettings(); got.RouteMode != backend.RouteModeFull {
 		t.Errorf("мусорный RouteMode = %q, ожидался full", got.RouteMode)

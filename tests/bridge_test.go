@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"pwdtt/backend"
+	"xwdtt/backend"
 )
 
 func newTestBridge(t *testing.T) *backend.Bridge {

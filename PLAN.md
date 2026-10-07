@@ -1,4 +1,4 @@
-# PWDTT — План переделки (инструкция для ИИ)
+# XWDTT — План переделки (инструкция для ИИ)
 
 > **Назначение файла:** этот документ — полный handoff. Если работа прервалась (закончились токены,
 > новая сессия), ИИ должен прочитать этот файл целиком и продолжать по этапам, не спрашивая заново
@@ -12,7 +12,7 @@
 
 ## 1. Что за проект
 
-**PWDTT** — десктопный VPN-клиент (Go), форк `proxy-turn-vk-android`. Поднимает локальный
+**XWDTT** — десктопный VPN-клиент (Go), форк `proxy-turn-vk-android`. Поднимает локальный
 WireGuard-интерфейс и гонит трафик через TURN/DTLS серверы VK, маскируя пакеты под RTP
 (ChaCha20-Poly1305) — для провайдера это выглядит как зашифрованный медиатрафик звонка.
 
@@ -43,9 +43,9 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
 - `backend/bridge.go` — `Bridge` мост к ядру. `Connect(params)` → `core.New(cfg).Start()` →
   `forwardEvents()` читает `chan core.Event` и шлёт в `onEvent(name, args...)`.
   Событие `"wg_config"` вызывает `wg.Apply(ev.Data, ev.TurnIPs, wgLogf)`.
-- `backend/store.go` — `~/.config/pwdtt/config.json` (AppSettings) и `servers/<name>.json`
+- `backend/store.go` — `~/.config/xwdtt/config.json` (AppSettings) и `servers/<name>.json`
   (ProfileData). Атомарная запись через `atomicWrite`.
-- `backend/wg.go` — управление интерфейсом `pwdtt-wg`, **три отдельные реализации**:
+- `backend/wg.go` — управление интерфейсом `xwdtt-wg`, **три отдельные реализации**:
   - `applyLinux(conf, turnIPs, logf)` — `ip`/`wg` через `sudo -n`
   - `applyWindows(conf, turnIPs, logf)` — wintun + userspace WireGuard + `netsh`/`route`
   - `applyDarwin(conf, turnIPs, logf)` — osascript-привилегированный helper, принимает
@@ -78,7 +78,7 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
 2. **Тюнелирование — переключатель** `full` (всё через VPN, как сейчас) | `split`
    (через VPN только IP из списка, остальное напрямую).
 3. **Список IP — глобальный** в `config.json`, общий для всех серверов.
-4. **Поддержка доменов в списке** — `pwdtt ips add vk.com` → резолв в IP с кэшем
+4. **Поддержка доменов в списке** — `xwdtt ips add vk.com` → резолв в IP с кэшем
    (референс реализации: `proxy-turn-vk-android/app/src/main/java/com/wdtt/client/settings/BypassRoutes.kt`).
 5. **Перенос из Android-ядра — ВСЁ:**
    - Группа 1 (скорость): диспетчер с PrioCh/адаптивными chunk'ами/dwell, распределение по relay'ям, быстрый старт воркеров + allocate-gate
@@ -117,7 +117,7 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
   `wg.Apply(conf, turnIPs, policy, logf)` — policy прокинут во все три apply (Windows:
   метрика/gw/excludes только в full; Darwin: 0.0.0.0/0 не разворачивается в split);
   Bridge: `buildRoutePolicy()` в Connect (резолв до старта ядра), применяется в `wg_config`;
-  CLI: `pwdtt route [full|split]`, `pwdtt ips list|add|rm`; 13 тестов
+  CLI: `xwdtt route [full|split]`, `xwdtt ips list|add|rm`; 13 тестов
   (`tests/routeplan_test.go`); `go build` (3 ОС) + `go vet` + `go test ./...` зелёные;
   smoke-тест команд пройден.
 - [x] **Этап 4.** Обновление ядра из qWDTT — **ГОТОВО (02.10.2026):**
@@ -139,9 +139,9 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
     как на Android, маршруты по `BuildRoutePlan`, DNS из RAWCONF только в full),
     обёртка `rawTunAdapter` (batch-Read/Write tun.Device → однопакетный RawTUN) →
     `core.AttachTUN`; заглушка non-Windows; тесты `tests/raw_test.go`.
-  - **4.5 CLI-фичи:** `pwdtt ping [имя]` (`core/ping.go` — перенос `RunPing`: TURN Allocate
+  - **4.5 CLI-фичи:** `xwdtt ping [имя]` (`core/ping.go` — перенос `RunPing`: TURN Allocate
     + DTLS-хендшейк; в raw/no-dtls — RTT на запросе конфига через RTP-obfs; перебор хешей);
-    `pwdtt servers check <имя>` (перенос `runHashChecks`: статусы ok/captcha/dead/limited/
+    `xwdtt servers check <имя>` (перенос `runHashChecks`: статусы ok/captcha/dead/limited/
     network); `pause`/`resume` — `Bridge.Pause/Resume` уже отданы в интерактив (команды из
     отдельного процесса осознанно невозможны — процесс-модель); тест
     `tests/check_test.go`.
@@ -158,7 +158,7 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
   - **CI `build.yml`:** без Node/Wails/webkit — job `test` (vet+test обоих модулей, core
     отдельно через `working-directory`), `build-linux-windows` (`go build` нативно и с
     `GOOS=windows`), `build-macos` (amd64+arm64 → `lipo` → zip); имена артефактов
-    `pwdtt-linux-amd64`/`pwdtt-windows-amd64`/`pwdtt-macos` сохранены — `release.yml`
+    `xwdtt-linux-amd64`/`xwdtt-windows-amd64`/`xwdtt-macos` сохранены — `release.yml`
     не менялся; YAML провалидирован.
   - **README.md:** переписан под CLI — справка по командам, флаги `connect`
     (`-raw`/`-notls`), раздел «Маршрутизация: весь / только список» (`route`, `ips`), DoH,
@@ -230,17 +230,17 @@ WireGuard-интерфейс и гонит трафик через TURN/DTLS с�
 **Команды:**
 
 ```
-pwdtt                                  → интерактивный режим (промпт "pwdtt> ")
-pwdtt connect <имя|wdtt://ссылка> [--workers N] [--obfs audio|video] [--raw] [--notls]
-pwdtt disconnect                       → (реализовать через управление фоном, см. ниже)
-pwdtt servers list|add <wdtt://...>|show <имя>|rm <имя>|set-hashes <имя> h1,h2,...
-pwdtt ips list|add <ip|cidr|домен>...|rm <ip|cidr|домен>...
-pwdtt route full|split
-pwdtt settings get|set <key> <value>   → keys: autostart, obfs, obfs-accepted, turn-tcp, workers, fingerprint, doh
-pwdtt ping [<имя>]                     → замер RTT (Этап 4.5)
-pwdtt servers check <имя>              → проверка хешей (Этап 4.5)
-pwdtt pause|resume                     → пауза туннеля (Этап 4.5)
-pwdtt update | report | version | help
+xwdtt                                  → интерактивный режим (промпт "xwdtt> ")
+xwdtt connect <имя|wdtt://ссылка> [--workers N] [--obfs audio|video] [--raw] [--notls]
+xwdtt disconnect                       → (реализовать через управление фоном, см. ниже)
+xwdtt servers list|add <wdtt://...>|show <имя>|rm <имя>|set-hashes <имя> h1,h2,...
+xwdtt ips list|add <ip|cidr|домен>...|rm <ip|cidr|домен>...
+xwdtt route full|split
+xwdtt settings get|set <key> <value>   → keys: autostart, obfs, obfs-accepted, turn-tcp, workers, fingerprint, doh
+xwdtt ping [<имя>]                     → замер RTT (Этап 4.5)
+xwdtt servers check <имя>              → проверка хешей (Этап 4.5)
+xwdtt pause|resume                     → пауза туннеля (Этап 4.5)
+xwdtt update | report | version | help
 ```
 
 **Как собирать `Connect` (повторяет GUI, см. `frontend/src/pages/Connect.tsx`):**
@@ -265,15 +265,15 @@ stats/logs/pause/resume/help/quit`; логи продолжают печитат
 
 **Про `disconnect`:** либо `connect` живёт в своём процессе (тогда Ctrl+C = disconnect, а
 отдельная команда не нужна), либо демон. **Принято:** процесс-модель — `connect` блокирует
-терминал, Ctrl+C отключает. `pwdtt disconnect` не нужен; в интерактивном режиме команда есть.
+терминал, Ctrl+C отключает. `xwdtt disconnect` не нужен; в интерактивном режиме команда есть.
 
 **Реализовано (Этап 2):** `pause/resume/disconnect` как отдельные команды печатают подсказку
 (работать только в интерактиве/окне connect); `stats`/`logs`/`update`/`report`/`version` —
 полноценные команды; `raw`/`notls`-флаги `connect` и `ips`/`route`/`doh` — Этапы 3–4.
 
 **Приёмка:**
-- `pwdtt servers add "wdtt://..."` создаёт профиль в `~/.config/pwdtt/servers/`
-- `pwdtt connect <имя>` поднимает туннель (на Windows — со встроенным манифестом),
+- `xwdtt servers add "wdtt://..."` создаёт профиль в `~/.config/xwdtt/servers/`
+- `xwdtt connect <имя>` поднимает туннель (на Windows — со встроенным манифестом),
   логи видны, Ctrl+C снимает интерфейс (`route print` / `ip route` — маршрутных остатков нет)
 - Интерактивный режим работает параллельно с печатью логов
 
@@ -321,12 +321,12 @@ policy (резолв доменов — see 3.5, выполняется зара
   - если `!HijackDefault` — пропустить `netsh ... metric=1` для WG-интерфейса и
     `route change 0.0.0.0 ... metric 9999` (и не сохранять `physGW` для restore);
   - если `SplitRoutes` — не добавлять exclude-маршруты (`turnIPs`, `vkExcludeCIDRs`);
-  - маршруты `netsh interface ip add route <cidr> pwdtt-wg` — только из `TunnelRoutes`
+  - маршруты `netsh interface ip add route <cidr> xwdtt-wg` — только из `TunnelRoutes`
     (в split это только пользовательский список, **не** `allowedIPs` вида `0.0.0.0/0`);
   - teardown и так удаляет только записанное в `activeExcludeRoutes`/`activeRoutes` — логику
     не ломать.
 - **Linux (`applyLinux`):** аналогично — в split не добавлять `allowedIPs` и excludes,
-  добавить `ip route add <cidr> dev pwdtt-wg` только для списка (через `runCmdLinux` = sudo).
+  добавить `ip route add <cidr> dev xwdtt-wg` только для списка (через `runCmdLinux` = sudo).
 - **Darwin (`applyDarwin`):** helper получает `-tunnel` и `-exclude` через запятую —
   в split передать `-tunnel <список>` и `-exclude ""` (пусто), НЕ разворачивать `0.0.0.0/0`
   в `0.0.0.0/1,128.0.0.0/1`.
@@ -336,7 +336,7 @@ policy (резолв доменов — see 3.5, выполняется зара
 
 **3.5 Резолв доменов с кэшем** (новый файл, напр. `backend/splitresolve.go`):
 - `ips add vk.com` → резолвить в `/32` (A-записи), хранить в профиле списка **домен**,
-  резолвить при `connect` (с кэшем в `~/.config/pwdtt/dnscache.json`, TTL ~10 мин,
+  резолвить при `connect` (с кэшем в `~/.config/xwdtt/dnscache.json`, TTL ~10 мин,
   при неудаче — брать stale из кэша)
 - Референс логики: `proxy-turn-vk-android/.../BypassRoutes.kt` (строки 289–330: резолв,
   stale-кэш, отсев пустых результатов)
@@ -345,7 +345,7 @@ policy (резолв доменов — see 3.5, выполняется зара
 **Приёмка:**
 - `route full` — поведение байт-в-байт как раньше (`route print` до/после подключения идентичен)
 - `route split` + `ips add 1.2.3.4` — при подключении появляется только маршрут `1.2.3.4/32`
-  через `pwdtt-wg`, дефолтный маршрут НЕ тронут, `ping 8.8.8.8` идёт напрямую
+  через `xwdtt-wg`, дефолтный маршрут НЕ тронут, `ping 8.8.8.8` идёт напрямую
 - Юнит-тесты `BuildRoutePlan` (оба режима) + нормализация списка
 
 ---
@@ -413,7 +413,7 @@ policy (резолв доменов — see 3.5, выполняется зара
   `setupGlobalResolver()` → их `setupGlobalResolver(arg)` c выбором:
   `yandex|cloudflare|google|doh-yandex|doh-cloudflare|doh-google|custom:IP|doh:URL`.
   Новая настройка `AppSettings.DoH string` (default `"yandex"` — сохраняет текущее поведение)
-  + CLI `pwdtt settings set doh doh-cloudflare`. Зависимость `golang.org/x/net/http2` — уже
+  + CLI `xwdtt settings set doh doh-cloudflare`. Зависимость `golang.org/x/net/http2` — уже
   есть в go.mod (проверить).
 - **Replay-window:** в `core/obfs.go` перенести `replayWindow` из
   `go_client/obfs.go` строки 34–93 (`replayWindowSpan`, `replayWindowMaxEntries = 8192`,
@@ -435,15 +435,15 @@ policy (резолв доменов — see 3.5, выполняется зара
     назначить IP/маршруты как в `applyWindows`, но читать пакеты из TUN-файла в диспетчер
   - реализация: новый файл `backend/wg_raw.go` + ветка в `wg.Apply` по policy/флагу
   - интерфейс конфига: `ConnectParams.Raw bool` / `NoDTLS bool`
-- Оба режима — под флагами CLI (`pwdtt connect --raw`, `--notls`), по умолчанию выключены.
+- Оба режима — под флагами CLI (`xwdtt connect --raw`, `--notls`), по умолчанию выключены.
 
 #### 4.5 CLI-фичи (зависят от Этапа 2)
 
-- `pwdtt servers check <имя>` → `runHashChecks` из `go_client/main.go` строки 59–107
+- `xwdtt servers check <имя>` → `runHashChecks` из `go_client/main.go` строки 59–107
   (статусы ok/captcha/dead/limited/network; у нас это печать в stdout, не формат `HASH_CHECK|`)
-- `pwdtt ping [имя]` → `RunPing` из `go_client/session.go` (функцию перенести в core,
+- `xwdtt ping [имя]` → `RunPing` из `go_client/session.go` (функцию перенести в core,
   флаг `-ping-only` логика: `go_client/main.go` строки 285–305)
-- `pwdtt pause` / `pwdtt resume` → у `core.Core` уже есть `Pause()/Resume()`, но `Bridge`
+- `xwdtt pause` / `xwdtt resume` → у `core.Core` уже есть `Pause()/Resume()`, но `Bridge`
   их не отдаёт — добавить методы `Bridge.Pause()/Resume()` и вызовы из CLI
   (пауза воркеров через `pauseFlag`)
 
@@ -451,7 +451,7 @@ policy (резолв доменов — see 3.5, выполняется зара
 - `go test ./...` зелёный; **прогнать бенчмарки до и после 4.1**: `go test -bench=. ./tests/`
   (файл `tests/benchmarks_test.go`) — сравнить, деградации нет
 - Новые тесты: `chunkSizeFor`, replay-window (повтор отбрасывается), DoH-парсер
-- Ручная проверка на Windows: `pwdtt connect` → `route print`, скорость/отзывчивость
+- Ручная проверка на Windows: `xwdtt connect` → `route print`, скорость/отзывчивость
   сравнить с предыдущей версией (скачивание большого файла, `speedtest`)
 
 ---
@@ -464,8 +464,8 @@ policy (резолв доменов — see 3.5, выполняется зара
 2. **CI `build.yml`:** убрать шаги Node/Wails/webkit →
    ```yaml
    - run: go test ./...
-   - run: go build -o pwdtt-linux-amd64        # linux job
-   - run: GOOS=windows GOARCH=amd64 go build -o pwdtt-windows-amd64.exe
+   - run: go build -o xwdtt-linux-amd64        # linux job
+   - run: GOOS=windows GOARCH=amd64 go build -o xwdtt-windows-amd64.exe
    # macOS: go build для amd64+arm64 и lipo -create → universal
    ```
    Для Windows — шаг `go-winres make` (манифест админа, см. Этап 1).
@@ -501,6 +501,6 @@ policy (резолв доменов — see 3.5, выполняется зара
 go build ./...                       # проверка компиляции
 go test ./...                        # все тесты (пакет tests/ = backend_test)
 go test -bench=. -benchtime=1s ./tests/   # бенчмарки (до/после этапа 4.1)
-GOOS=windows GOARCH=amd64 go build -o pwdtt.exe   # кросс-сборка (Go в окружении 32-битный!)
-GOOS=linux  GOARCH=amd64 go build -o pwdtt-linux
+GOOS=windows GOARCH=amd64 go build -o xwdtt.exe   # кросс-сборка (Go в окружении 32-битный!)
+GOOS=linux  GOARCH=amd64 go build -o xwdtt-linux
 ```
