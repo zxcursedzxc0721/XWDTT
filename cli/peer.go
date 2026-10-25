@@ -23,6 +23,7 @@ import (
 // (app/src/main/assets/deploy.sh: WDTT_DIRECT_PORT/WDTT_RAW_PORT) и
 // мобильного клиента (SettingsStore.kt: 56002/56003).
 const (
+	defaultDTLSPort   = "56000"
 	defaultDirectPort = "56002"
 	defaultRawPort    = "56003"
 )
@@ -31,8 +32,20 @@ const (
 // подключения: обычный режим — порт профиля (DTLS), -notls — direct-порт,
 // -raw — raw-порт. directPort/rawPort из профиля; пусто = дефолт.
 func PeerAddrForMode(peer string, noTLS, raw bool, directPort, rawPort string) string {
+	trimmed := strings.TrimSpace(peer)
+	host, _, err := net.SplitHostPort(trimmed)
+
 	if !noTLS && !raw {
-		return strings.TrimSpace(peer)
+		if err == nil {
+			return trimmed
+		}
+		// Легаси-профили могли сохраниться как «1.2.3.4» без порта — ядро
+		// такой адрес не резолвит («missing port in address»), а DTLS-
+		// листенер по умолчанию 56000.
+		if trimmed == "" {
+			return trimmed
+		}
+		return net.JoinHostPort(trimmed, defaultDTLSPort)
 	}
 
 	port := strings.TrimSpace(directPort)
@@ -47,10 +60,11 @@ func PeerAddrForMode(peer string, noTLS, raw bool, directPort, rawPort string) s
 		}
 	}
 
-	trimmed := strings.TrimSpace(peer)
-	host, _, err := net.SplitHostPort(trimmed)
+	if trimmed == "" {
+		return trimmed
+	}
+	// Без порта — считаем всю строку хостом (peer может быть «1.2.3.4»).
 	if err != nil {
-		// Без порта — считаем всю строку хостом (peer может быть «1.2.3.4»).
 		host = trimmed
 	}
 	if host == "" {

@@ -225,6 +225,12 @@ func (c *Core) start() error {
 
 	// Резолв пира
 	cleanPeerAddr := strings.TrimSpace(c.cfg.PeerAddr)
+	// Синтаксическая ошибка (нет порта) не лечится ретраями — раньше
+	// здесь висели 15 секунд, и только потом падал connect.
+	if _, _, splitErr := net.SplitHostPort(cleanPeerAddr); splitErr != nil {
+		cancel()
+		return fmt.Errorf("resolve peer: %w", splitErr)
+	}
 	var peer *net.UDPAddr
 	var err error
 	for i := 0; i < 15; i++ {

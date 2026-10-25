@@ -49,3 +49,21 @@ func TestPeerAddrForMode_NoPortInPeer(t *testing.T) {
 		t.Errorf("peer без порта: got %q, want 1.2.3.4:56002", got)
 	}
 }
+
+// Регрессия: легаси-профиль с peer без порта в обычном (DTLS) режиме
+// раньше уходил в ядро как «1.2.3.4» и падал с
+// «resolve peer: missing port in address» (connect молча не поднимался).
+func TestPeerAddrForMode_DTLSNoPortDefaultsTo56000(t *testing.T) {
+	got := cli.PeerAddrForMode("1.2.3.4", false, false, "", "")
+	if got != "1.2.3.4:56000" {
+		t.Errorf("DTLS peer без порта: got %q, want 1.2.3.4:56000", got)
+	}
+	got = cli.PeerAddrForMode(" 1.2.3.4 ", false, false, "", "")
+	if got != "1.2.3.4:56000" {
+		t.Errorf("DTLS peer без порта с пробелами: got %q, want 1.2.3.4:56000", got)
+	}
+	got = cli.PeerAddrForMode("example.com", false, false, "", "")
+	if got != "example.com:56000" {
+		t.Errorf("DTLS домен без порта: got %q, want example.com:56000", got)
+	}
+}
