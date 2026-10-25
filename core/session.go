@@ -45,9 +45,166 @@ const (
 	writeDeadline = 3 * time.Second
 )
 
-type connectedUDPConn struct{ *net.UDPConn }
+// connectedUDPConn — UDP-сокет к TURN, который при ошибке записи
+// пересоздаётся и отправляет пакет повторно.
+//
+// Симптом, который здесь чинится: на Windows с параллельно работающим
+// Cloudflare WARP (или другим VPN) ОС привязывает сокет к их адаптеру
+// (локальный адрес вроде 172.16.0.2). Когда тот адаптер пересоздаётся или
+// меняется таблица маршрутизации, все последующие записи по этому сокету
+// падают с «wsasend: An invalid argument was supplied» до конца его жизни:
+// TURN Allocate не проходит, входящих байт 0, хотя консоль уже сообщает
+// «подключено». Раньше такой сокет жил до конца попытки; теперь ОС заново
+// выбирает маршрут/адрес, и пакет уходит по свежему сокету.
+type connectedUDPConn struct {
+	mu         sync.Mutex
+	resolved   *net.UDPAddr
+	conn       *net.UDPConn
+	generation uint64 // растёт при каждом пересоздании — для читателей
+	closed     bool
+	lastRedial time.Time
+	readDL     time.Time
+	writeDL    time.Time
+}
+
+// minRedialInterval — пауза между пересозданиями сокета, чтобы ошибка
+// записи не порождала бесконечный цикл «dial → write → error».
+const minRedialInterval = time.Second
+
+// newConnectedUDP создаёт connectedUDPConn с установленными буферами.
+func newConnectedUDP(resolved *net.UDPAddr) (*connectedUDPConn, error) {
+	c := &connectedUDPConn{resolved: resolved}
+	conn, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	c.conn = conn
+	return c, nil
+}
+
+// dial — свежий UDP-сокет к тому же адресу с прежними буферами/дедлайнами.
+// Вызывается под c.mu.
+func (c *connectedUDPConn) dial() (*net.UDPConn, error) {
+	conn, err := net.DialUDP("udp", nil, c.resolved)
+	if err != nil {
+		return nil, err
+	}
+	_ = conn.SetReadBuffer(socketBufSize)
+	_ = conn.SetWriteBuffer(socketBufSize)
+	if !c.readDL.IsZero() {
+		_ = conn.SetReadDeadline(c.readDL)
+	}
+	if !c.writeDL.IsZero() {
+		_ = conn.SetWriteDeadline(c.writeDL)
+	}
+	return conn, nil
+}
+
+func (c *connectedUDPConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.conn == nil {
+		return 0, net.ErrClosed
+	}
+	n, err := c.conn.Write(p)
+	if err == nil {
+		return n, nil
+	}
+	if time.Since(c.lastRedial) < minRedialInterval {
+		return 0, err
+	}
+	nc, derr := c.dial()
+	if derr != nil {
+		return 0, fmt.Errorf("%w (пересоздание UDP-сокета не удалось: %v)", err, derr)
+	}
+	_ = c.conn.Close()
+	c.conn = nc
+	c.generation++
+	c.lastRedial = time.Now()
+	log.Printf("[TURN] UDP-сокет пересоздан после ошибки записи: %v — проверьте конфликт VPN-адаптеров (WARP и т.п.)", err)
+	return nc.Write(p)
+}
 
 func (c *connectedUDPConn) WriteTo(p []byte, _ net.Addr) (int, error) { return c.Write(p) }
+
+// ReadFrom читает из актуального сокета. Если сокет заменён, пока чтение
+// было заблокировано на старом — переходит на новый, не возвращая ошибку.
+func (c *connectedUDPConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	for {
+		c.mu.Lock()
+		if c.closed || c.conn == nil {
+			c.mu.Unlock()
+			return 0, nil, net.ErrClosed
+		}
+		conn, gen := c.conn, c.generation
+		c.mu.Unlock()
+
+		n, addr, err := conn.ReadFrom(p)
+		if err == nil {
+			return n, addr, nil
+		}
+
+		c.mu.Lock()
+		replaced := !c.closed && (c.conn != conn || c.generation != gen)
+		c.mu.Unlock()
+		if replaced {
+			continue // старый сокет закрыт пересозданием — читаем новый
+		}
+		return n, addr, err
+	}
+}
+
+func (c *connectedUDPConn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	if c.conn == nil {
+		return nil
+	}
+	return c.conn.Close()
+}
+
+func (c *connectedUDPConn) LocalAddr() net.Addr {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil
+	}
+	return c.conn.LocalAddr()
+}
+
+func (c *connectedUDPConn) SetDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.readDL, c.writeDL = t, t
+	if c.conn == nil {
+		return net.ErrClosed
+	}
+	return c.conn.SetDeadline(t)
+}
+
+func (c *connectedUDPConn) SetReadDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.readDL = t
+	if c.conn == nil {
+		return net.ErrClosed
+	}
+	return c.conn.SetReadDeadline(t)
+}
+
+func (c *connectedUDPConn) SetWriteDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.writeDL = t
+	if c.conn == nil {
+		return net.ErrClosed
+	}
+	return c.conn.SetWriteDeadline(t)
+}
 
 func dialTURNConn(turnAddr string, tcp bool) (net.PacketConn, error) {
 	if !tcp {
@@ -55,13 +212,11 @@ func dialTURNConn(turnAddr string, tcp bool) (net.PacketConn, error) {
 		if err != nil {
 			return nil, fmt.Errorf("резолв TURN: %w", err)
 		}
-		c, err := net.DialUDP("udp", nil, resolved)
+		c, err := newConnectedUDP(resolved)
 		if err != nil {
 			return nil, fmt.Errorf("подключение TURN UDP: %w", err)
 		}
-		_ = c.SetReadBuffer(socketBufSize)
-		_ = c.SetWriteBuffer(socketBufSize)
-		return &connectedUDPConn{c}, nil
+		return c, nil
 	}
 
 	d := net.Dialer{Timeout: 10 * time.Second}
