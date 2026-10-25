@@ -21,7 +21,10 @@ func runInteractive() int {
 
 	p := newPrinter(true)
 	app := backend.NewApp(p.OnEvent)
-	app.Init()
+	if err := app.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
 	defer app.Close()
 
 	installSignalWatcher(app, p)
@@ -53,6 +56,11 @@ func runInteractive() int {
 
 // dispatchInteractive выполняет команду промпта. Возвращает true для выхода.
 func dispatchInteractive(app *backend.App, p *printer, args []string) bool {
+	// Строка из одних кавычек ("", ", """ ...) даёт пустой args:
+	// раньше обращение к args[0] паниковало (index out of range).
+	if len(args) == 0 {
+		return false
+	}
 	switch args[0] {
 	case "connect":
 		if len(args) < 2 {

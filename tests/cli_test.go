@@ -115,6 +115,16 @@ func TestSplitCommandLine(t *testing.T) {
 	}
 }
 
+// ── Строка из одних кавычек: пустой args, без паники (XW-04) ──
+
+func TestSplitCommandLine_OnlyQuotes(t *testing.T) {
+	for _, in := range []string{`""`, `"`, `"""`, `  ""  `} {
+		if got := cli.SplitCommandLine(in); len(got) != 0 {
+			t.Errorf("SplitCommandLine(%q) = %#v, ожидался пустой список", in, got)
+		}
+	}
+}
+
 // ── Ссылка с пробелами в кавычках (интерактивный ввод) ──
 
 func TestSplitCommandLine_QuotesInside(t *testing.T) {

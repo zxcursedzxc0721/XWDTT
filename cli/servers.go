@@ -49,7 +49,8 @@ func serversCmd(st *backend.Store, args []string) int {
 
 func serversList(st *backend.Store) int {
 	profiles := st.ListProfiles()
-	if len(profiles) == 0 {
+	broken := st.ListBrokenProfiles()
+	if len(profiles) == 0 && len(broken) == 0 {
 		fmt.Println("Серверов нет. Добавьте: xwdtt servers add \"wdtt://...\"")
 		return 0
 	}
@@ -59,17 +60,28 @@ func serversList(st *backend.Store) int {
 	}
 	sort.Strings(names)
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ИМЯ\tАДРЕС\tХЕШИ\tTCP\tВОРКЕРЫ")
-	for _, n := range names {
-		p := profiles[n]
-		workers := "-"
-		if p.Workers > 0 {
-			workers = fmt.Sprint(p.Workers)
+	if len(names) > 0 {
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "ИМЯ\tАДРЕС\tХЕШИ\tTCP\tВОРКЕРЫ")
+		for _, n := range names {
+			p := profiles[n]
+			workers := "-"
+			if p.Workers > 0 {
+				workers = fmt.Sprint(p.Workers)
+			}
+			fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", n, p.PeerAddr, len(nonEmpty(p.Hashes)), yesNo(p.TurnTCP), workers)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", n, p.PeerAddr, len(nonEmpty(p.Hashes)), yesNo(p.TurnTCP), workers)
+		w.Flush()
 	}
-	w.Flush()
+
+	// Битые профили раньше не были видны нигде, а rm удалял их молча.
+	if len(broken) > 0 {
+		sort.Strings(broken)
+		fmt.Println("\nПовреждённые профили (файл есть, JSON не читается):")
+		for _, n := range broken {
+			fmt.Printf("  %s — показать: servers show %q, удалить с копией: servers rm %q --force\n", n, n, n)
+		}
+	}
 	return 0
 }
 
@@ -83,7 +95,11 @@ func serversAdd(st *backend.Store, args []string) int {
 		fmt.Fprintln(os.Stderr, "не удалось разобрать ссылку. Ожидается wdtt://... или qwdtt://config?...")
 		return 2
 	}
-	name, reused := upsertFromLink(st, link)
+	name, reused, err := upsertFromLink(st, link)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "не удалось сохранить профиль: %v\n", err)
+		return 1
+	}
 	if reused {
 		fmt.Printf("Профиль обновлён: %s\n", name)
 	} else {
@@ -99,11 +115,13 @@ func serversShow(st *backend.Store, args []string) int {
 	}
 	p, err := st.LoadProfile(args[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "профиль %q не найден.\n", args[0])
-		listProfileNames(st, os.Stderr)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		if !st.ProfileExists(args[0]) {
+			listProfileNames(st, os.Stderr)
+		}
 		return 1
 	}
-	fmt.Printf("Имя:      %s\n", args[0])
+	fmt.Printf("Имя:      %s\n", backend.CanonicalProfileName(args[0]))
 	fmt.Printf("Адрес:    %s\n", p.PeerAddr)
 	fmt.Printf("Пароль:   %s\n", p.Password)
 	fmt.Printf("Хеши (%d): %s\n", len(nonEmpty(p.Hashes)), strings.Join(nonEmpty(p.Hashes), ", "))
@@ -126,16 +144,54 @@ func serversShow(st *backend.Store, args []string) int {
 }
 
 func serversRm(st *backend.Store, args []string) int {
-	if len(args) != 1 {
+	force := false
+	var positional []string
+	for _, a := range args {
+		if a == "-f" || a == "--force" {
+			force = true
+			continue
+		}
+		positional = append(positional, a)
+	}
+	if len(positional) != 1 {
 		serversUsage()
 		return 2
 	}
-	if err := st.DeleteProfile(args[0]); err != nil {
+	name := positional[0]
+
+	_, loadErr := st.LoadProfile(name)
+	if loadErr != nil {
+		if !st.ProfileExists(name) {
+			fmt.Fprintf(os.Stderr, "профиль %q не найден.\n", name)
+			listProfileNames(st, os.Stderr)
+			return 1
+		}
+		// Файл есть, но не читается — не удаляем молча то, что может быть
+		// ещё пригодно для ручного восстановления.
+		if !force {
+			fmt.Fprintf(os.Stderr, "профиль %q повреждён: %v\n", name, loadErr)
+			fmt.Fprintf(os.Stderr, "Удалить с резервной копией: xwdtt servers rm %q --force\n", name)
+			return 1
+		}
+		backup, berr := st.BackupProfile(name)
+		if berr != nil {
+			fmt.Fprintf(os.Stderr, "не удалось сделать резервную копию: %v\n", berr)
+			return 1
+		}
+		if err := st.DeleteProfile(name); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+		fmt.Printf("Удалён повреждённый профиль: %s (копия: %s)\n", name, backup)
+		return 0
+	}
+
+	if err := st.DeleteProfile(name); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		listProfileNames(st, os.Stderr)
 		return 1
 	}
-	fmt.Printf("Удалён: %s\n", args[0])
+	fmt.Printf("Удалён: %s\n", name)
 	return 0
 }
 
@@ -178,7 +234,18 @@ func serversEdit(st *backend.Store, args []string) int {
 			return 0
 		}
 	}
-	flagArgs, posArgs := splitArgs(args, editValueFlags)
+	// --force разрешает перезапись существующего целевого профиля.
+	force := false
+	filtered := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "-f" || a == "--force" {
+			force = true
+			continue
+		}
+		filtered = append(filtered, a)
+	}
+
+	flagArgs, posArgs := splitArgs(filtered, editValueFlags)
 	if len(posArgs) != 1 {
 		serversUsage()
 		return 2
@@ -197,16 +264,40 @@ func serversEdit(st *backend.Store, args []string) int {
 		return code
 	}
 
-	if err := st.SaveProfile(newName, *np); err != nil {
+	// Старое и новое имя после санитизации — одно и то же имя файла
+	// (в т.ч. отличаются только регистром: на Windows это один файл).
+	// Раньше save+delete в таком случае удалял только что записанный профиль.
+	oldCanon := backend.CanonicalProfileName(name)
+	newCanon := backend.CanonicalProfileName(newName)
+	if newCanon == "" {
+		fmt.Fprintln(os.Stderr, "имя после очистки стало пустым")
+		return 2
+	}
+	if newCanon == oldCanon || strings.EqualFold(newCanon, oldCanon) {
+		if err := st.SaveProfile(oldCanon, *np); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+		fmt.Printf("Сохранено: %s\n", oldCanon)
+		return 0
+	}
+
+	// Переименование поверх чужого профиля — только по явному --force.
+	if st.ProfileExists(newCanon) && !force {
+		fmt.Fprintf(os.Stderr, "профиль %q уже существует — перезаписать его: xwdtt servers edit %q -name %q --force\n",
+			newCanon, oldCanon, newCanon)
+		return 1
+	}
+
+	if err := st.SaveProfile(newCanon, *np); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 1
 	}
-	if newName != name {
-		_ = st.DeleteProfile(name)
-		fmt.Printf("Сохранено и переименовано: %s → %s\n", name, newName)
-	} else {
-		fmt.Printf("Сохранено: %s\n", newName)
+	if err := st.DeleteProfile(oldCanon); err != nil {
+		fmt.Fprintf(os.Stderr, "сохранён как %q, но старый профиль не удалён: %v\n", newCanon, err)
+		return 1
 	}
+	fmt.Printf("Сохранено и переименовано: %s → %s\n", oldCanon, newCanon)
 	return 0
 }
 
@@ -254,6 +345,15 @@ func parseEditFlags(flagArgs []string, p *backend.ProfileData, name string) (*ba
 		fmt.Fprintln(os.Stderr, "адрес не может быть пустым")
 		return nil, "", 2
 	}
+	if err := validatePeerAddr(strings.TrimSpace(np.PeerAddr)); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil, "", 2
+	}
+	// 0 — авто (ядро само приведёт к кратному 9, максимум 108).
+	if np.Workers < 0 || np.Workers > 108 {
+		fmt.Fprintln(os.Stderr, "воркеры: 0 (авто) или 1..108")
+		return nil, "", 2
+	}
 	if strings.TrimSpace(*newName) == "" {
 		fmt.Fprintln(os.Stderr, "имя не может быть пустым")
 		return nil, "", 2
@@ -267,20 +367,27 @@ func serversUsage() {
   list                                список серверов
   add <wdtt://...>                    добавить/обновить по ссылке
   show <имя>                          показать профиль
-  rm <имя>                            удалить профиль
+  rm <имя> [--force]                  удалить профиль (--force — и повреждённый,
+                                      с копией в backups/)
   set-hashes <имя> h1,h2,...          заменить хеши VK
   check <имя>                         проверить хеши VK (статусы ok/captcha/dead/...)
   edit <имя> [-peer A] [-password P] [-name N] [-listen L]
         [-turn H] [-port P] [-turn-tcp] [-workers N]
-        [-direct-port N] [-raw-port N]
+        [-direct-port N] [-raw-port N] [--force]
+        (--force — разрешить перезапись существующего имени)
 `)
 }
 
 // listProfileNames печатает доступные имена профилей.
 func listProfileNames(st *backend.Store, w io.Writer) {
 	profiles := st.ListProfiles()
-	if len(profiles) == 0 {
+	broken := st.ListBrokenProfiles()
+	if len(profiles) == 0 && len(broken) == 0 {
 		fmt.Fprintln(w, "Доступных серверов нет.")
+		return
+	}
+	if len(profiles) == 0 {
+		fmt.Fprintf(w, "Читаемых профилей нет; повреждённых: %d (servers list).\n", len(broken))
 		return
 	}
 	names := make([]string, 0, len(profiles))

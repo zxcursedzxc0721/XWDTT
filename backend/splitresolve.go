@@ -120,6 +120,9 @@ func SplitEntryIsDomain(entry string) bool {
 	return !strings.Contains(entry, "/")
 }
 
+// IsDomainName — экспорт isDomainName для валидации peer-адресов в CLI.
+func IsDomainName(host string) bool { return isDomainName(host) }
+
 // isDomainName — строгая проверка хоста (порт из BypassRoutes.kt,
 // строки 293–302): есть точка, TLD с буквой, лейблы валидны.
 func isDomainName(host string) bool {

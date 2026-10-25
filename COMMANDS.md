@@ -8,7 +8,7 @@
 
 ```powershell
 cd F:\etc\XWDTT
-$env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\pw64.exe" .
+$env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\xwdtt.exe" .
 ```
 
 > ⚠️ **Только `GOARCH=amd64`!** Локальный `go build` в 32-битном окружении даёт
@@ -17,7 +17,7 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\pw64.exe" .
 > `create TUN: Error loading wintun.dll: %1 is not a valid Win32 application`.
 > Релизы в CI собираются amd64 — пользователям это не грозит.
 
-В дальнейшем примеры используют `$env:TEMP\pw64.exe` — подставь свой путь к бинарнику.
+В дальнейшем примеры используют `$env:TEMP\xwdtt.exe` — подставь свой путь к бинарнику.
 
 ---
 
@@ -92,9 +92,9 @@ xwdtt connect [флаги] <имя|wdtt://ссылка>
 ### Примеры
 
 ```powershell
-pw64.exe connect "Мой сервер"
-pw64.exe connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
-pw64.exe connect zxc -raw -notls
+xwdtt.exe connect "Мой сервер"
+xwdtt.exe connect "wdtt://1.2.3.4:8443:51820:1080:пароль#Мой сервер" -workers 27
+xwdtt.exe connect zxc -raw -notls
 ```
 
 ---
@@ -116,8 +116,8 @@ xwdtt ping [флаги] [имя]
 | `-raw` | raw-режим (GETCONF_RAW) |
 
 ```powershell
-pw64.exe ping zxc          # RTT: 318 мс (хеш 1 из 4)
-pw64.exe ping -raw         # без профиля, прямой запрос
+xwdtt.exe ping zxc          # RTT: 318 мс (хеш 1 из 4)
+xwdtt.exe ping -raw         # без профиля, прямой запрос
 ```
 
 ---
@@ -128,10 +128,10 @@ pw64.exe ping -raw         # без профиля, прямой запрос
 xwdtt servers list                                  # таблица: имя, адрес, хеши, TCP, воркеры
 xwdtt servers add "wdtt://IP:ДТЛС:WG:ПРОКСИ:ПАРОЛЬ[:ХЕШИ][#название]"
 xwdtt servers show <имя>                            # все поля профиля
-xwdtt servers rm <имя>                              # удалить
+xwdtt servers rm <имя> [--force]                    # удалить (--force — битый профиль, с резервной копией)
 xwdtt servers set-hashes <имя> h1,h2,...            # заменить хеши VK
 xwdtt servers check <имя>                           # проверить хеши: ok/captcha/dead/limited/network
-xwdtt servers edit <имя> [флаги]                    # правка полей
+xwdtt servers edit <имя> [флаги] [--force]          # правка полей (--force — перезапись существующего имени)
 ```
 
 **`add` — upsert:** если профиль с тем же адресом и паролем уже есть, он
@@ -144,17 +144,17 @@ xwdtt servers edit <имя> [флаги]                    # правка по�
 |---|---|
 | `-peer A` | адрес пира (DTLS) |
 | `-password P` | пароль |
-| `-name N` | **переименовать** профиль |
+| `-name N` | **переименовать** профиль (цель поверх существующего — только с `--force`) |
 | `-listen L` | listen-адрес |
 | `-turn H` / `-port P` | TURN-хост / порт |
 | `-turn-tcp` | TCP-транспорт (булев) |
 | `-workers N` | воркеры |
 
 ```powershell
-pw64.exe servers add "wdtt://1.2.3.4:56000:56001:9000:пароль:хеш1,хеш2#Мой"
-pw64.exe servers set-hashes zxc h1,h2,h3,h4
-pw64.exe servers edit zxc -workers 27 -turn-tcp
-pw64.exe servers check zxc
+xwdtt.exe servers add "wdtt://1.2.3.4:56000:56001:9000:пароль:хеш1,хеш2#Мой"
+xwdtt.exe servers set-hashes zxc h1,h2,h3,h4
+xwdtt.exe servers edit zxc -workers 27 -turn-tcp
+xwdtt.exe servers check zxc
 ```
 
 ---
@@ -177,9 +177,9 @@ xwdtt settings set <ключ> <значение>
 | `workers` | целое `>= 0` | воркеры по умолчанию (`0` = авто) |
 
 ```powershell
-pw64.exe settings get
-pw64.exe settings set doh cloudflare
-pw64.exe settings set workers 27
+xwdtt.exe settings get
+xwdtt.exe settings set doh cloudflare
+xwdtt.exe settings set workers 27
 ```
 
 ---
@@ -219,10 +219,10 @@ xwdtt ips rm  <ip|cidr|домен>...
   при подключении/отключении — секунды вместо десятков минут.
 
 ```powershell
-pw64.exe ips add 1.2.3.4 10.0.0.0/24 vk.com
-pw64.exe ips import "C:\Users\Danil\Downloads\ip-list (2).json"
-pw64.exe ips list
-pw64.exe ips rm vk.com
+xwdtt.exe ips add 1.2.3.4 10.0.0.0/24 vk.com
+xwdtt.exe ips import "C:\Users\Danil\Downloads\ip-list (2).json"
+xwdtt.exe ips list
+xwdtt.exe ips rm vk.com
 ```
 
 ---
@@ -257,11 +257,11 @@ pw64.exe ips rm vk.com
 ### Split-проверка
 
 ```powershell
-pw64.exe ping zxc
-pw64.exe route split
-pw64.exe ips add 1.1.1.1
+xwdtt.exe ping zxc
+xwdtt.exe route split
+xwdtt.exe ips add 1.1.1.1
 route print -4                                  # состояние ДО
-Start-Process -FilePath "$env:TEMP\pw64.exe" -ArgumentList "connect","zxc"
+Start-Process -FilePath "$env:TEMP\xwdtt.exe" -ArgumentList "connect","zxc"
 
 # пока окно открыто:
 Find-NetRoute -RemoteIPAddress 1.1.1.1 | Select InterfaceAlias   # → xwdtt-wg
@@ -274,8 +274,8 @@ Find-NetRoute -RemoteIPAddress 8.8.8.8 | Select InterfaceAlias   # → Ethernet
 ### Full-проверка
 
 ```powershell
-pw64.exe route full
-Start-Process -FilePath "$env:TEMP\pw64.exe" -ArgumentList "connect","zxc"
+xwdtt.exe route full
+Start-Process -FilePath "$env:TEMP\xwdtt.exe" -ArgumentList "connect","zxc"
 
 route print -4                                  # default теперь через xwdtt-wg
 (Invoke-WebRequest https://api.ipify.org -UseBasicParsing).Content  # IP сервера
@@ -287,7 +287,7 @@ Test-Connection 8.8.8.8 -Count 3                # пинг через тунне
 ### Аварийный откат
 
 ```powershell
-Get-Process pw64 -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process xwdtt -ErrorAction SilentlyContinue | Stop-Process -Force
 # wintun-адаптер удаляется вместе с процессом (проверено), мусора не остаётся:
 Get-NetAdapter -IncludeHidden | Where-Object {$_.Name -like '*xwdtt*'}   # пусто = чисто
 Get-NetRoute -DestinationPrefix '0.0.0.0/0'                              # default на Ethernet

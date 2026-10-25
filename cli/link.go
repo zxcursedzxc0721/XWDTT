@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -107,8 +108,13 @@ func parseLegacy(raw string) (*WdttLink, bool) {
 
 // upsertFromLink — импорт ссылки идемпотентен: если профиль с тем же адресом
 // и паролем уже есть, он обновляется (хеши/порт/воркеры), иначе создаётся новый
-// с авто-именем как в GUI («Сервер 1», «Name 2», ...). Возвращает имя и флаг обновления.
-func upsertFromLink(st *backend.Store, link *WdttLink) (string, bool) {
+// с авто-именем как в GUI («Сервер 1», «Name 2», ...).
+// Ошибка сохранения НЕ скрывается: иначе CLI печатал «Профиль сохранён», а
+// на диске ничего не было.
+func upsertFromLink(st *backend.Store, link *WdttLink) (string, bool, error) {
+	if err := validatePeerAddr(link.Host); err != nil {
+		return "", false, err
+	}
 	profiles := st.ListProfiles()
 	for name, p := range profiles {
 		if p.PeerAddr != link.Host || p.Password != link.Password {
@@ -128,32 +134,66 @@ func upsertFromLink(st *backend.Store, link *WdttLink) (string, bool) {
 			changed = true
 		}
 		if changed {
-			_ = st.SaveProfile(name, p)
+			if err := st.SaveProfile(name, p); err != nil {
+				return name, true, fmt.Errorf("обновить профиль %q: %w", name, err)
+			}
 		}
-		return name, true
+		return name, true, nil
 	}
 
-	name := autoName(profiles, link.Name)
-	_ = st.SaveProfile(name, backend.ProfileData{
+	name := autoName(st, link.Name)
+	if err := st.SaveProfileNew(name, backend.ProfileData{
 		PeerAddr: link.Host,
 		Password: link.Password,
 		Hashes:   link.Hashes,
 		TurnPort: link.Port,
 		Workers:  link.Workers,
-	})
-	return name, false
+	}); err != nil {
+		return name, false, err
+	}
+	return name, false, nil
 }
 
 // autoName — логика авто-имени из GUI: база + счётчик, пока имя свободно.
-func autoName(existing map[string]backend.ProfileData, linkName string) string {
-	base := linkName
+// Проверка идёт по САНИТИЗИРОВАННОМУ имени (именно оно станет файлом):
+// раньше «#» в ссылке давал «### 1», который сохранялся как «1.json» и
+// затирал чужой профиль.
+func autoName(st *backend.Store, linkName string) string {
+	// Имя сразу приводим к тому виду, в котором оно попадёт на диск: иначе
+	// пользователь видел «Профиль сохранён: ### 1», а файл назывался иначе.
+	base := backend.CanonicalProfileName(linkName)
 	if base == "" || base == "Server" {
 		base = "Сервер"
 	}
-	for counter := 1; ; counter++ {
+	for counter := 1; counter <= 100000; counter++ {
 		cand := fmt.Sprintf("%s %d", base, counter)
-		if _, ok := existing[cand]; !ok {
+		if !st.ProfileExists(cand) {
 			return cand
 		}
 	}
+	return fmt.Sprintf("%s %d", base, 100001)
+}
+
+// validatePeerAddr проверяет peer-адрес из ссылки/флага: host:port, где
+// host — IPv4 или DNS-имя, порт 1..65535. Раньше принималось всё, что не
+// пустое, и нерабочий профиль выяснялся только на connect.
+func validatePeerAddr(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("адрес %q: ожидается host:port (%v)", addr, err)
+	}
+	if host == "" {
+		return fmt.Errorf("адрес %q: пустой хост", addr)
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil || p < 1 || p > 65535 {
+		return fmt.Errorf("адрес %q: порт должен быть 1..65535", addr)
+	}
+	if net.ParseIP(host) != nil {
+		return nil
+	}
+	if !backend.IsDomainName(host) {
+		return fmt.Errorf("адрес %q: %q — не IP и не доменное имя", addr, host)
+	}
+	return nil
 }

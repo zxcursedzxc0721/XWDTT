@@ -108,7 +108,12 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 			return 2
 		}
 		var reused bool
-		profName, reused = upsertFromLink(app.Store(), link)
+		var uerr error
+		profName, reused, uerr = upsertFromLink(app.Store(), link)
+		if uerr != nil {
+			fmt.Fprintln(os.Stderr, uerr)
+			return 1
+		}
 		var err error
 		if prof, err = app.GetProfile(profName); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -224,7 +229,10 @@ const codeHelpShown = -1
 func runConnect(args []string) int {
 	p := newPrinter(false)
 	app := backend.NewApp(p.OnEvent)
-	app.Init()
+	if err := app.Init(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 1
+	}
 	defer app.Close()
 
 	// Сигналы — до запуска, чтобы Ctrl+C в первые миллисекунды не убил процесс

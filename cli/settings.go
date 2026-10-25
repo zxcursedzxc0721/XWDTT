@@ -128,8 +128,10 @@ func settingsSet(st *backend.Store, app *backend.App, key, value string) int {
 		return save()
 	case "workers":
 		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 {
-			fmt.Fprintln(os.Stderr, "ожидается целое >= 0 (0 = авто)")
+		// Ядро всё равно приводит число к 108, но хранить заведомо неверное
+		// значение в настройках — значит прятать опечатку от пользователя.
+		if err != nil || n < 0 || n > 108 {
+			fmt.Fprintln(os.Stderr, "ожидается целое 0..108 (0 = авто)")
 			return 2
 		}
 		s.Workers = n

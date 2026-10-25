@@ -1,5 +1,10 @@
 # Build output
 /build/bin/
+/build/live/
+/build/live2/
+/build/live3/
+/build/live4/
+/build/live5/
 
 # Соседний репозиторий Android-версии (источник кода для переноса, не наш git)
 /proxy-turn-vk-android/

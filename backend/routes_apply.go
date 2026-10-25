@@ -1,77 +1,95 @@
 package backend
 
-// Батч-применение маршрутов интерфейса.
+// Применение маршрутов через интерфейс.
 //
-// split-списки после импорта больших ip-list (тысячи /32) несовместимы с
-// поштучным запуском: каждый netsh — отдельный процесс (~100мс), 10832 адреса
-// давали бы ~18 минут подъёма и столько же снятия туннеля. netsh умеет
-// выполнять скрипт одним процессом (netsh -f), это ~4000 команд/сек:
-// те же 10832 маршрута — около 3 секунд.
+// Малые списки (<= batchRouteThreshold) ставятся поштучно через IP Helper API:
+// ошибка видна поимённо, маршрут создаётся только активным.
+//
+// Большие списки (тысячи /32 после `ips import`) несовместимы с поштучным
+// применением: netsh умеет выполнять скрипт одним процессом (netsh -f), это
+// ~4000 команд/сек (10 832 адреса — около 3 секунд). Скрипт пишется с
+// store=active: без него netsh складывает маршруты в постоянное хранилище
+// (registry), откуда они не исчезают после краха и перезагрузки и уводят
+// трафик мимо/в туннель навсегда.
 //
 // Ограничения скрипта netsh (проверено эмпирически):
 //   - файл должен быть без BOM (UTF-8 с BOM даёт «неверная директива»);
 //   - netsh ПРОДОЛЖАЕТ после ошибочной команды — частичные сбои не валят скрипт;
-//   - успешная команда печатает «ОК.»/«Ok.» — мусорить такой вывод в лог нельзя,
+//   - успешная команда печатает «ОК.»/«Ok.» — мусорить таким выводом в лог нельзя,
 //     поэтому он перехватывается и в лог идут только строки-исключения.
+//
+// Поэтому после батча фактическое состояние сверяется с таблицей маршрутизации:
+// в activeTunnelRoutes попадают только реально существующие маршруты.
 
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
 )
 
-// batchRouteThreshold — до скольких маршрутов держать старое поштучное
-// поведение (ошибки видны поимённо в логе). Выше — батч одним процессом.
+// batchRouteThreshold — до скольких маршрутов применять их поштучно (ошибки
+// видны поимённо). Выше — батч одним процессом netsh.
 const batchRouteThreshold = 32
 
 // applyTunnelRoutes добавляет маршруты через интерфейс iface и возвращает
-// фактически добавленные (для учёта в teardown). logf может быть nil.
-func applyTunnelRoutes(cidrs []string, iface string, logf wgLogFunc) []string {
-	logf2 := func(msg string) { if logf != nil { logf(msg) } }
+// фактически добавленные (для точного снятия в teardown). logf может быть nil.
+func applyTunnelRoutes(cidrs []string, iface ipIface, logf wgLogFunc) []ipRoute {
+	logf2 := func(msg string) {
+		if logf != nil {
+			logf(msg)
+		}
+	}
 	if len(cidrs) == 0 {
 		return nil
 	}
 
-	if len(cidrs) <= batchRouteThreshold {
-		var added []string
-		for _, cidr := range cidrs {
-			if err := runCmdWindows("netsh", "interface", "ip", "add", "route", cidr, iface); err != nil {
-				logf2(fmt.Sprintf("netsh add route %s failed: %v", cidr, err))
+	// Нормализуем и отбрасываем дубли/невалидные/IPv6.
+	want := make([]ipRoute, 0, len(cidrs))
+	seen := make(map[string]bool, len(cidrs))
+	for _, cidr := range cidrs {
+		r, err := newRoute(cidr, nil, iface, 0)
+		if err != nil {
+			logf2(fmt.Sprintf("маршрут пропущен: %v", err))
+			continue
+		}
+		key := r.String()
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		want = append(want, r)
+	}
+	if len(want) == 0 {
+		return nil
+	}
+
+	if len(want) <= batchRouteThreshold {
+		added := make([]ipRoute, 0, len(want))
+		for _, r := range want {
+			if err := routeAdd(r); err != nil {
+				logf2(fmt.Sprintf("маршрут %s не добавлен: %v", r, err))
 				continue
 			}
-			added = append(added, cidr)
+			added = append(added, r)
 		}
 		return added
 	}
 
-	warnings, err := runNetshRouteScript("add", cidrs, iface)
+	warnings, err := runNetshRouteScript("add", routeStrings(want), iface.Alias)
 	if err != nil {
-		logf2(fmt.Sprintf("netsh batch add route (%d шт.): %v %s", len(cidrs), err, warnings))
+		logf2(fmt.Sprintf("netsh batch add route (%d шт.): %v %s", len(want), err, warnings))
 	} else if warnings != "" {
 		logf2(fmt.Sprintf("netsh batch add route (%d шт.): часть команд не выполнена: %s",
-			len(cidrs), warnings))
+			len(want), warnings))
 	}
-	return cidrs
-}
 
-// deleteTunnelRoutes удаляет маршруты, добавленные applyTunnelRoutes
-// (best-effort: отсутствие маршрута не ошибка снятия туннеля).
-func deleteTunnelRoutes(cidrs []string, iface string) {
-	if len(cidrs) == 0 {
-		return
+	added := filterExistingRoutes(iface, want)
+	if missing := len(want) - len(added); missing > 0 {
+		logf2(fmt.Sprintf("через туннель не встали %d из %d маршрутов", missing, len(want)))
 	}
-	if len(cidrs) <= batchRouteThreshold {
-		for _, cidr := range cidrs {
-			_ = runCmdWindows("netsh", "interface", "ip", "delete", "route", cidr, iface)
-		}
-		return
-	}
-	if warnings, err := runNetshRouteScript("delete", cidrs, iface); err == nil && warnings != "" {
-		log.Printf("netsh batch delete route (%d шт.): %s", len(cidrs), warnings)
-	}
+	return added
 }
 
 // runNetshRouteScript выполняет netsh -f со скриптом из cidrs (action:
@@ -90,8 +108,9 @@ func runNetshRouteScript(action string, cidrs []string, iface string) (string, e
 
 	w := bufio.NewWriter(f)
 	for _, cidr := range cidrs {
-		// CRLF — как в проверенных рабочих скриптах netsh
-		fmt.Fprintf(w, "interface ip %s route %s %s\r\n", action, cidr, iface)
+		// CRLF — как в проверенных рабочих скриптах netsh;
+		// store=active — не оставлять маршруты в реестре.
+		fmt.Fprintf(w, "interface ipv4 %s route %s \"%s\" store=active\r\n", action, cidr, iface)
 	}
 	if err := w.Flush(); err != nil {
 		f.Close()
@@ -162,4 +181,17 @@ func routeSummary(routes []string) string {
 		return fmt.Sprintf("%v", routes)
 	}
 	return fmt.Sprintf("%v … и ещё %d", routes[:show], len(routes)-show)
+}
+
+// withoutCIDR убирает точное совпадение CIDR из списка (для 0.0.0.0/0,
+// который в full-режиме добавляется отдельно как перехват default).
+func withoutCIDR(cidrs []string, drop string) []string {
+	out := make([]string, 0, len(cidrs))
+	for _, c := range cidrs {
+		if c == drop {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }

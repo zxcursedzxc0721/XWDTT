@@ -57,7 +57,14 @@ func (w *replayWindow) accept(wire []byte) bool {
 		w.initialized = true
 	} else if w.ssrc != ssrc {
 		// Смена SSRC (переподключение на том же relay) — начинаем заново.
-		return false
+		// Раньше здесь возвращалось false, но окно НЕ сбрасывалось: после
+		// смены SSRC все последующие пакеты отклонялись до перезапуска
+		// процесса (туннель «подключён», а трафика нет).
+		w.ssrc = ssrc
+		w.highestTime = uint64(ts)
+		w.seen = make(map[[12]byte]uint64, 4096)
+		w.seen[nonce] = uint64(ts)
+		return true
 	}
 	if _, exists := w.seen[nonce]; exists {
 		return false

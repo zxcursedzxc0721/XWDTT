@@ -181,8 +181,9 @@ func ipsImport(st *backend.Store, args []string) int {
 	}
 	entries, skipped, err := backend.ParseSplitIPList(data)
 	if err != nil {
+		// Код 2 — ошибка формата/содержимого файла, а не сбой ввода-вывода.
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return 1
+		return 2
 	}
 	if skipped > 0 {
 		fmt.Printf("пропущено некорректных записей: %d\n", skipped)

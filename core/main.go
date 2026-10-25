@@ -491,7 +491,10 @@ func (c *Core) getCaptchaMode() string {
 }
 
 func patchMTU(conf string) string {
-	if strings.Contains(conf, "MTU =") {
+	// Ключ мог быть записан как «MTU = 1400», «MTU=1400», «mtu =1400»:
+	// раньше проверялось только точное «MTU =», и второй MTU попадал в
+	// конфиг (неоднозначность для других парсеров).
+	if hasConfigKey(conf, "mtu") {
 		return conf
 	}
 	lines := strings.Split(conf, "\n")
@@ -508,6 +511,18 @@ func patchMTU(conf string) string {
 // ═══════════════════════════════════════════════════
 // HELPER FUNCTIONS — нормализация режимов
 // ═══════════════════════════════════════════════════
+
+// hasConfigKey — есть ли в конфиге ключ (без учёта регистра и пробелов
+// вокруг '=').
+func hasConfigKey(conf, key string) bool {
+	for _, line := range strings.Split(conf, "\n") {
+		parts := strings.SplitN(strings.TrimSpace(line), "=", 2)
+		if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), key) {
+			return true
+		}
+	}
+	return false
+}
 
 func normalizeCaptchaMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {

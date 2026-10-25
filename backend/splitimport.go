@@ -15,6 +15,7 @@ package backend
 // их количество возвращается в skipped.
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -23,17 +24,30 @@ import (
 // Возвращает нормализованный список (без дублей), число пропущенных
 // некорректных записей и ошибку только если формат файла неизвестен.
 func ParseSplitIPList(data []byte) (entries []string, skipped int, err error) {
+	// UTF-8 BOM — частый артефакт Windows-редакторов; json.Unmarshal его не
+	// принимает, и импорт падал с «неизвестный формат» без подсказки.
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+
 	var raw []string
 
 	// Пробуем формат «массив», затем «объект: сервис → IP».
 	if uerr := json.Unmarshal(data, &raw); uerr != nil {
 		var byService map[string][]string
 		if oerr := json.Unmarshal(data, &byService); oerr != nil {
-			return nil, 0, fmt.Errorf("неизвестный формат файла (нужен JSON-массив или объект {сервис: [ip...]})")
+			return nil, 0, fmt.Errorf("неизвестный формат файла: нужен JSON-массив строк или объект {сервис: [ip...]}")
+		}
+		if len(byService) == 0 {
+			return nil, 0, fmt.Errorf("в файле пустой объект — нечего импортировать")
 		}
 		for _, ips := range byService {
 			raw = append(raw, ips...)
 		}
+	}
+
+	// null/пустой массив — не «0 записей успешно», а ошибка ввода:
+	// так опечатка в файле не маскируется под успешный импорт.
+	if len(raw) == 0 {
+		return nil, 0, fmt.Errorf("в файле нет записей (null или пустой массив)")
 	}
 
 	entries = make([]string, 0, len(raw))

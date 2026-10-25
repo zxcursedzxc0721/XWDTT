@@ -15,6 +15,7 @@ package backend
 import (
 	"fmt"
 	"log"
+	"net"
 	"runtime"
 	"strings"
 
@@ -86,73 +87,92 @@ func (w *WG) ApplyRaw(rawConf string, turnIPs []string, policy RoutePolicy, logf
 	}
 	w.activeTun = tunDev
 
-	// Адрес /32 (как addAddress(ip, 32) на Android): шлюз не нужен —
-	// хостовые маршруты ниже.
-	host, mask, cidrErr := parseCIDR(ip + "/32")
-	if cidrErr != nil {
+	iface, ifaceErr := ifaceByAlias(wgIface)
+	if ifaceErr != nil {
 		w.teardownWindowsLocked()
-		return nil, fmt.Errorf("IP %q: %w", ip, cidrErr)
+		return nil, ifaceErr
 	}
-	if err := runCmdWindows("netsh", "interface", "ip", "set", "address",
-		"name="+wgIface, "source=static", host, mask); err != nil {
-		logf(fmt.Sprintf("netsh set address failed: %v", err))
-	}
+	w.activeIface = iface
 
-	gw := defaultGatewayWindows()
+	// Адрес /32 (как addAddress(ip, 32) на Android): шлюз не нужен —
+	// хостовые маршруты ниже. Назначаем через IP Helper API: netsh для /32
+	// возвращает успех, но адрес не назначает.
+	if err := ifaceSetIPv4Address(iface, ip+"/32"); err != nil {
+		w.teardownWindowsLocked()
+		return nil, err
+	}
+	w.activeAddr = ip + "/32"
+	logf(fmt.Sprintf("Адрес %s назначен на %s", ip, wgIface))
 
 	if plan.HijackDefault {
-		// Интерфейс с метрикой 1 побеждает дефолтный маршрут провайдера
-		// (тот поднимается до 9999) — как в applyWindows.
-		_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
-			"interface="+wgIface, "metric=1")
-		logf(fmt.Sprintf("Default gateway: %s", gw))
-		if gw != "" {
-			w.physGW = gw
-			_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
+		def, err := bestDefaultRoute(iface.Luid)
+		if err != nil {
+			w.teardownWindowsLocked()
+			return nil, fmt.Errorf("full-режим невозможен: %w", err)
 		}
+		logf(fmt.Sprintf("Шлюз по умолчанию: %s (интерфейс %d)", def.NextHop, def.Index))
+
+		// Метрика 1 только у своего интерфейса — физический default не трогаем.
+		if m, _, merr := ifaceGetMetric(iface); merr == nil {
+			w.savedMetric, w.hadMetric = m, true
+		}
+		if err := ifaceSetMetric(iface, 1); err != nil {
+			logf("метрика интерфейса: " + err.Error())
+		}
+
+		defRoute, rerr := newRoute("0.0.0.0/0", nil, iface, 0)
+		if rerr != nil {
+			w.teardownWindowsLocked()
+			return nil, rerr
+		}
+		if err := routeAdd(defRoute); err != nil {
+			w.teardownWindowsLocked()
+			return nil, err
+		}
+		w.activeWinRoute = append(w.activeWinRoute, defRoute)
 
 		// DNS из RAWCONF назначаем только в full: в туннеле серверный
 		// резолвер доступен, а в split адреса списка через него не идут
 		// (маршрута к нему нет) — там остаёмся на DNS провайдера.
-		if dnsCSV != "" {
-			for i, srv := range strings.Split(dnsCSV, ",") {
-				srv = strings.TrimSpace(srv)
-				if srv == "" {
-					continue
-				}
-				if i == 0 {
-					if dnsErr := runCmdWindows("netsh", "interface", "ip", "set", "dnsservers",
-						"name="+wgIface, "static", srv, "primary", "validate=no"); dnsErr != nil {
-						logf(fmt.Sprintf("netsh set dnsservers %s: %v", srv, dnsErr))
-					}
-					continue
-				}
-				_ = runCmdWindows("netsh", "interface", "ip", "add", "dnsservers",
-					"name="+wgIface, srv, fmt.Sprintf("index=%d", i+1), "validate=no")
+		var dnsList []string
+		for _, s := range strings.Split(dnsCSV, ",") {
+			if parsed := net.ParseIP(strings.TrimSpace(s)); parsed != nil && parsed.To4() != nil {
+				dnsList = append(dnsList, parsed.String())
 			}
-			logf(fmt.Sprintf("DNS: %s", dnsCSV))
 		}
-	}
+		if len(dnsList) > 0 {
+			if err := ifaceSetDNS(iface.Alias, dnsList); err != nil {
+				logf("DNS: " + err.Error())
+			} else {
+				w.activeDNS = true
+				logf(fmt.Sprintf("DNS через туннель: %s", strings.Join(dnsList, ", ")))
+			}
+		}
 
-	// Exclude routes — TURN/VK/DNS мимо туннеля (в split пусто).
-	var excludes []string
-	if gw != "" {
-		excludes = plan.ExcludeRoutes
-		for _, cidr := range excludes {
-			ex, exMask, exErr := parseCIDR(cidr)
-			if exErr != nil {
+		// Exclude routes — TURN/VK/DNS мимо туннеля (в split пусто).
+		phys := ipIface{Luid: def.Luid, Index: def.Index}
+		for _, cidr := range plan.ExcludeRoutes {
+			r, rerr := newRoute(cidr, def.NextHop, phys, 0)
+			if rerr != nil {
 				continue
 			}
-			_ = runCmdWindows("route", "add", ex, "mask", exMask, gw)
+			if err := routeAdd(r); err != nil {
+				logf(fmt.Sprintf("исключение %s: %v", cidr, err))
+				continue
+			}
+			w.activeWinExcl = append(w.activeWinExcl, r)
 		}
 	}
-	w.activeExcludeRoutes = excludes
 
 	// Маршруты через интерфейс: full — 0.0.0.0/0, split — адреса списка.
-	tunnelRoutes := applyTunnelRoutes(plan.TunnelRoutes, wgIface, logf)
-	w.activeRoutes = tunnelRoutes
+	tunnelCIDRs := plan.TunnelRoutes
+	if plan.HijackDefault {
+		tunnelCIDRs = withoutCIDR(tunnelCIDRs, "0.0.0.0/0")
+	}
+	tunnelRoutes := applyTunnelRoutes(tunnelCIDRs, iface, logf)
+	w.activeWinRoute = append(w.activeWinRoute, tunnelRoutes...)
 
-	logf(fmt.Sprintf("Raw туннель %s поднят (ip=%s), маршруты через него: %s", wgIface, ip, routeSummary(tunnelRoutes)))
+	logf(fmt.Sprintf("Raw туннель %s поднят (ip=%s), маршруты через него: %s", wgIface, ip, routeSummary(routeStrings(tunnelRoutes))))
 	return newRawTunAdapter(tunDev), nil
 }
 

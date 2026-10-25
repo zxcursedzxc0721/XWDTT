@@ -46,14 +46,23 @@ func TestReplayWindow_TooOldRejected(t *testing.T) {
 	}
 }
 
-// Смена SSRC между кадрами не принимается (новая потоковая сессия).
-func TestReplayWindow_SSRCChangeRejected(t *testing.T) {
+// Смена SSRC перезапускает окно (переподключение к тому же relay): новый
+// поток принимается, а его повтор — нет. Раньше кадр отклонялся, окно не
+// сбрасывалось, и все последующие пакеты терялись до перезапуска процесса.
+func TestReplayWindow_SSRCChangeRestartsWindow(t *testing.T) {
 	var w replayWindow
 	if !w.accept(buildTestRTP(1, 1, 960)) {
 		t.Fatal("первый пакет должен быть принят")
 	}
-	if w.accept(buildTestRTP(2, 1, 960)) {
-		t.Error("кадр с другим SSRC должен быть отброшен")
+	first := buildTestRTP(2, 1, 960)
+	if !w.accept(first) {
+		t.Fatal("первый кадр нового SSRC должен быть принят")
+	}
+	if w.accept(first) {
+		t.Error("повтор кадра нового SSRC должен быть отброшен")
+	}
+	if !w.accept(buildTestRTP(2, 2, 1920)) {
+		t.Error("следующий кадр нового SSRC должен быть принят")
 	}
 }
 

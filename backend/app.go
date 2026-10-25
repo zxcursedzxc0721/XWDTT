@@ -13,6 +13,7 @@ type App struct {
 	bridge  *Bridge
 	store   *Store
 	onEvent func(name string, args ...any)
+	release func() // освобождение блокировки единственного экземпляра
 }
 
 // NewApp создаёт App. onEvent — приёмник событий ("log", "state_changed",
@@ -30,20 +31,35 @@ func NewApp(onEvent func(name string, args ...any)) *App {
 // Init поднимает Bridge и выполняет стартовую работу.
 // Вызывать только из команд, которым нужен мост (connect, интерактивный режим):
 // остальным командам незачем трогать маршруты и лог-файлы.
-func (a *App) Init() {
+//
+// Возвращает ошибку, если уже работает другой экземпляр XWDTT (два туннеля
+// делят один wintun-адаптер и таблицу маршрутов) — второй обязан завершиться.
+func (a *App) Init() error {
+	release, err := acquireInstanceLock()
+	if err != nil {
+		return err
+	}
+	a.release = release
+
 	a.bridge = NewBridge(context.Background(), a.store, a.onEvent)
 
-	// Уборка маршрутов, оставшихся от краша прошлого запуска
-	// (на платформах без такой проблемы — no-op).
-	go CleanupStaleExcludeRoutes(func(msg string) {
+	// Уборка маршрутов, оставшихся от краша прошлого запуска. Синхронно:
+	// горутина могла выполниться уже после подъёма нового туннеля и снести
+	// его маршруты.
+	CleanupStaleExcludeRoutes(func(msg string) {
 		a.onEvent("log", "INFO", "[WG] "+msg)
 	})
+	return nil
 }
 
 // Close отключает туннель и освобождает ресурсы. Вызывать defer'ом после Init.
 func (a *App) Close() {
 	if a.bridge != nil {
 		a.bridge.Disconnect()
+	}
+	if a.release != nil {
+		a.release()
+		a.release = nil
 	}
 }
 
