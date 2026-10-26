@@ -1,0 +1,57 @@
+name: Сообщить об ошибке
+description: Опишите проблему с XWDTT
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что сообщаете об ошибке!
+        Перед отправкой выполните `xwdtt report` и вставьте вывод — он содержит версию, настройки и логи сессии.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что произошло
+      description: Понятное описание проблемы и шаги для воспроизведения
+      placeholder: "1. Подключился к серверу... 2. Через минуту трафик пропал..."
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Вывод `xwdtt report`
+      description: Скопируйте целиком (рекомендуется — сразу даёт большинство нужных данных)
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: Вывод `xwdtt version` или версия из Releases
+      placeholder: "v1.6.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Операционная система
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+  - type: dropdown
+    id: route-mode
+    attributes:
+      label: Режим маршрутизации
+      options:
+        - split
+        - full
+        - не знаю
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Проверки
+      options:
+        - label: Я попробовал свежую версию из Releases
+        - label: Во время подключения не работают другие VPN-программы (WARP и т.п.)
