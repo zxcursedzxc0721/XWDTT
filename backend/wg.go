@@ -449,6 +449,10 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 		}
 		w.activeWinRoute = append(w.activeWinRoute, defRoute)
 
+		// Kill-switch: пока туннель жив, прямой default убираем — обрыв
+		// сессии не должен разливать трафик напрямую с реальным IP.
+		killSwitchRemovePhysDef(def, logf)
+
 		// DNS из конфига сервера (10.x внутри туннеля). Без этого система
 		// шлёт запросы на DNS провайдера, который ушёл в туннель и
 		// недоступен с сервера — «подключено», но не открывается ничего.
@@ -460,6 +464,10 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 				logf(fmt.Sprintf("DNS через туннель: %s", strings.Join(dns, ", ")))
 			}
 		}
+
+		// Физические адаптеры: без зануления Windows шлёт DNS-запросы
+		// параллельно по ним (smart multi-homed) — утечка мимо туннеля.
+		guardPhysicalDNS(logf)
 
 		// Exclude routes — TURN/VK/DNS мимо туннеля через физический шлюз.
 		phys := ipIface{Luid: def.Luid, Index: def.Index}
@@ -535,6 +543,10 @@ func (w *WG) teardownWindowsLocked() {
 	}
 	w.activeWinRoute = nil
 
+	// Kill-switch снимаем: возвращаем физический default из файла бэкапа
+	// (нет файла — ничего не делаем: split или вызов без full-сессии).
+	restorePhysDef(func(s string) { log.Printf("[WG] %s", s) })
+
 	// Возвращаем метрику интерфейса до нашей.
 	if w.hadMetric && w.activeIface.Luid != 0 {
 		if err := ifaceSetMetric(w.activeIface, w.savedMetric); err != nil {
@@ -549,6 +561,10 @@ func (w *WG) teardownWindowsLocked() {
 		}
 	}
 	w.activeDNS = false
+
+	// Возвращаем DNS физических адаптеров, отключённых guardPhysicalDNS
+	// (восстановит и стал-случай приложения, но только если туннель мёртв).
+	restorePhysicalDNS(func(s string) { log.Printf("[WG] %s", s) })
 
 	// Снимаем адрес: он переживает пересоздание адаптера и мешает split-сессии.
 	if w.activeAddr != "" {

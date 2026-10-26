@@ -29,3 +29,7 @@ func routesThroughIface(uint64) ([]ipRoute, error)      { return nil, errWinOnly
 func filterExistingRoutes(ipIface, []ipRoute) []ipRoute { return nil }
 func ifaceSetDNS(string, []string) error                { return errWinOnly }
 func ifaceClearDNS(string) error                        { return errWinOnly }
+
+// DNS физических адаптеров (dns_phys_windows.go) — только Windows.
+func guardPhysicalDNS(func(string))        {}
+func restorePhysicalDNS(func(string)) bool { return false }

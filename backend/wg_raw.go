@@ -131,6 +131,9 @@ func (w *WG) ApplyRaw(rawConf string, turnIPs []string, policy RoutePolicy, logf
 		}
 		w.activeWinRoute = append(w.activeWinRoute, defRoute)
 
+		// Kill-switch: прямой default убран, пока туннель жив (как в WG-ветке).
+		killSwitchRemovePhysDef(def, logf)
+
 		// DNS из RAWCONF назначаем только в full: в туннеле серверный
 		// резолвер доступен, а в split адреса списка через него не идут
 		// (маршрута к нему нет) — там остаёмся на DNS провайдера.
@@ -148,6 +151,10 @@ func (w *WG) ApplyRaw(rawConf string, turnIPs []string, policy RoutePolicy, logf
 				logf(fmt.Sprintf("DNS через туннель: %s", strings.Join(dnsList, ", ")))
 			}
 		}
+
+		// Физические адаптеры — как в WG-ветке: зануляем, чтобы Windows
+		// не утекала DNS-запросами мимо туннеля (smart multi-homed).
+		guardPhysicalDNS(logf)
 
 		// Exclude routes — TURN/VK/DNS мимо туннеля (в split пусто).
 		phys := ipIface{Luid: def.Luid, Index: def.Index}

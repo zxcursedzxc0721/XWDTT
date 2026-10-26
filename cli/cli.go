@@ -33,7 +33,7 @@ func Run(args []string) int {
 		fmt.Fprintf(os.Stderr, "%s работает в процессе с туннелем: интерактивный режим или Ctrl+C в окне connect.\n", args[0])
 		return 1
 	case "update":
-		return cmdUpdate()
+		return cmdUpdate(args[1:])
 	case "report":
 		return cmdReport(nil)
 	case "version", "--version", "-v":
@@ -74,7 +74,7 @@ func usage() {
   xwdtt route [full|split]                 режим маршрутизации (тюнелирование)
   xwdtt ips list|add ...|rm ...            список адресов split-режима
   xwdtt ping [имя]                          замер RTT до TURN-сервера
-  xwdtt update | report | version | help
+  xwdtt update [--verify <файл>] | report | version | help
 
 Серверы:
   xwdtt servers list

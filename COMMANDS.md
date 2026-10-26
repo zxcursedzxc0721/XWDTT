@@ -49,7 +49,8 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\xwdtt.exe" .
 | `xwdtt help` | эта справка |
 | `xwdtt version` | версия (`-v`, `--version`) |
 | `xwdtt report` | отчёт для Issue: ОС, версия, настройки, логи сессии (печатает в stdout) |
-| `xwdtt update` | проверить наличие обновления (печатает ссылку на скачивание) |
+| `xwdtt update` | проверить наличие обновления (ссылка + ожидаемый SHA-256 из SHA256SUMS) |
+| `xwdtt update --verify <файл>` | сверить скачанный файл с SHA256SUMS релиза (0 — совпал, 1 — нет) |
 
 ---
 

@@ -107,7 +107,7 @@ func dispatchInteractive(app *backend.App, p *printer, args []string) bool {
 	case "logs":
 		logsCmd(app.Store())
 	case "update":
-		cmdUpdate()
+		cmdUpdate(nil)
 	case "report":
 		cmdReport(app)
 	case "version":
