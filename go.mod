@@ -1,10 +1,10 @@
 module xwdtt
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/google/uuid v1.6.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/sys v0.49.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
 	wg-turn-client v0.0.0-00010101000000-000000000000
 )
