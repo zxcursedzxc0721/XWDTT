@@ -374,6 +374,9 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 		return fmt.Errorf("create TUN: %w", err)
 	}
 	w.activeTun = tunDev
+	// Отдельная точка: если висит именно CreateTUN (драйвер/SetupAPI), а не
+	// NewDevice/uapi ниже — это видно в логе по последней строке.
+	logf("TUN-устройство создано (wintun ok)")
 
 	// Create userspace WireGuard device
 	logger := &device.Logger{
