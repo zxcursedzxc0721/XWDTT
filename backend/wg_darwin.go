@@ -134,7 +134,13 @@ func (w *WG) applyDarwin(confText string, turnIPs []string, policy RoutePolicy, 
 	dev := device.NewDevice(tunDev, conn.NewDefaultBind(), logger)
 
 	logf("Применение WireGuard конфига (uapi)")
-	if err := dev.IpcSetOperation(strings.NewReader(uapiConf(wgConf))); err != nil {
+	uapiStr, uapiErr := uapiConf(wgConf)
+	if uapiErr != nil {
+		dev.Close()
+		hconn.Close()
+		return fmt.Errorf("uapi conf: %w", uapiErr)
+	}
+	if err := dev.IpcSetOperation(strings.NewReader(uapiStr)); err != nil {
 		dev.Close()
 		hconn.Close()
 		return fmt.Errorf("IpcSet: %w", err)

@@ -98,6 +98,7 @@ type Dispatcher struct {
 	localConn net.PacketConn
 	tun       RawTUN // не nil в raw-режиме: сырые IP-пакеты вместо локального WG-loopback
 	ready     chan struct{}
+	readyOnce sync.Once // close(ready) ровно один раз: повторный AttachTUN не паникует
 	clientAddr   atomic.Pointer[net.Addr]
 	mu           sync.Mutex
 	workers      []*WorkerSlot
@@ -166,10 +167,11 @@ func NewDispatcherPendingTUN(ctx context.Context, stats *Stats) *Dispatcher {
 }
 
 // AttachTUN подключает полученный TUN-fd к уже запущенному диспетчеру и
-// снимает блокировку с readLoop/writeLoop.
+// снимает блокировку с readLoop/writeLoop. close(ready) защищён sync.Once:
+// повторный вызов (рестарт raw-режима, гонка) не паникует на двойном close.
 func (d *Dispatcher) AttachTUN(t RawTUN) {
 	d.tun = t
-	close(d.ready)
+	d.readyOnce.Do(func() { close(d.ready) })
 }
 
 func (d *Dispatcher) Shutdown() {

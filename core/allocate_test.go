@@ -33,13 +33,26 @@ func TestClassifyAllocateError_QuotaIsQuotaNotBan(t *testing.T) {
 
 func TestClassifyAllocateError_UnreachableIsAddressDead(t *testing.T) {
 	for _, msg := range []string{
-		"udp: connect: connection refused",
 		"network unreachable",
-		"i/o timeout",
 		"no route to host",
 	} {
 		if got := classifyAllocateError(errors.New(msg)); got != SessionErrorAddressDead {
 			t.Errorf("%q: got %q, want %q", msg, got, SessionErrorAddressDead)
+		}
+	}
+}
+
+// Таймаут и connection refused — обычный сетевой сбой (потерянный UDP-пакет),
+// а не мёртвость адреса: раньше они классифицировались как ADDRESS_DEAD и
+// один такой пакет выкидывал TURN-адрес из глобальной ротации на 5 минут.
+func TestClassifyAllocateError_TimeoutIsRetryNotBan(t *testing.T) {
+	for _, msg := range []string{
+		"udp: connect: connection refused",
+		"i/o timeout",
+		"timeout: no recent network activity",
+	} {
+		if got := classifyAllocateError(errors.New(msg)); got != SessionErrorRetry {
+			t.Errorf("%q: got %q, want %q", msg, got, SessionErrorRetry)
 		}
 	}
 }

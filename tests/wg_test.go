@@ -251,7 +251,10 @@ AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 `
 
-	uapi := backend.UapiConf(wgConf)
+	uapi, uapiErr := backend.UapiConf(wgConf)
+	if uapiErr != nil {
+		t.Fatalf("UapiConf: %v", uapiErr)
+	}
 
 	if !strings.Contains(uapi, "private_key=") {
 		t.Error("UAPI missing private_key")
@@ -279,11 +282,14 @@ PersistentKeepalive = 25
 
 func TestUapiConf_MultipleAllowedIPs(t *testing.T) {
 	wgConf := `[Peer]
-PublicKey = abc
+PublicKey = AQ==
 AllowedIPs = 10.0.0.0/8, 192.168.0.0/16
 `
 
-	uapi := backend.UapiConf(wgConf)
+	uapi, uapiErr := backend.UapiConf(wgConf)
+	if uapiErr != nil {
+		t.Fatalf("UapiConf: %v", uapiErr)
+	}
 
 	if !strings.Contains(uapi, "allowed_ip=10.0.0.0/8") {
 		t.Error("UAPI missing first allowed_ip")
@@ -337,14 +343,17 @@ func TestParseCIDR(t *testing.T) {
 
 func TestToHex(t *testing.T) {
 	// base64 "AQ==" = 0x01
-	got := backend.ToHex("AQ==")
+	got, err := backend.ToHex("AQ==")
+	if err != nil {
+		t.Fatalf("ToHex(AQ==): %v", err)
+	}
 	if got != "01" {
 		t.Errorf("ToHex(AQ==): got %q, want %q", got, "01")
 	}
 
-	// Невалидный base64 — возвращает как есть
-	got = backend.ToHex("not-base64!!")
-	if got != "not-base64!!" {
-		t.Errorf("ToHex(invalid): got %q, want original", got)
+	// Невалидный base64 — ошибка (раньше возвращалась исходная строка
+	// и молча уходила в IpcSet как «ключ» — дефект «uapiConf проглатывает»)
+	if _, err := backend.ToHex("not-base64!!"); err == nil {
+		t.Error("ToHex(invalid): want error, got nil")
 	}
 }

@@ -14,7 +14,10 @@ func RequestConfig(conn net.Conn, localPort, deviceID, password string) (string,
 		return "", fmt.Errorf("отправка GETCONF: %w", err)
 	}
 
-	b := make([]byte, 4096)
+	// Ответ конфига — один датаграммный Read: буфер должен быть на
+	// максимальный размер UDP/DTLS-записи (64 КБ), иначе длинный
+	// конфиг молча обрезается на 4096 и устройство получает кривой key.
+	b := make([]byte, 65536)
 	if err := conn.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		return "", fmt.Errorf("установка дедлайна: %w", err)
 	}
@@ -65,7 +68,7 @@ func RequestRawConfig(conn net.Conn, deviceID, password string) (ip, dnsCSV stri
 		return "", "", 0, fmt.Errorf("отправка GETCONF_RAW: %w", err)
 	}
 
-	b := make([]byte, 4096)
+	b := make([]byte, 65536)
 	if err = conn.SetReadDeadline(time.Now().Add(45 * time.Second)); err != nil {
 		return "", "", 0, fmt.Errorf("установка дедлайна: %w", err)
 	}
@@ -100,9 +103,29 @@ func RequestRawConfig(conn net.Conn, deviceID, password string) (ip, dnsCSV stri
 	if len(parts) != 3 {
 		return "", "", 0, fmt.Errorf("некорректный формат RAWCONF: %q", resp)
 	}
+	// Валидация полей: раньше принималось всё подряд, и мусорный ip/dns
+	// уходил в TUN (netsh падал уже там, с менее понятной ошибкой),
+	// а mtu=0/отрицательный ломал интерфейс.
+	ipVal := strings.TrimSpace(parts[0])
+	dnsVal := strings.TrimSpace(parts[1])
+	if ipVal != "" && net.ParseIP(ipVal) == nil {
+		return "", "", 0, fmt.Errorf("некорректный IP в RAWCONF: %q", parts[0])
+	}
+	for _, resolver := range strings.Split(dnsVal, ",") {
+		resolver = strings.TrimSpace(resolver)
+		if resolver == "" {
+			continue
+		}
+		if net.ParseIP(resolver) == nil {
+			return "", "", 0, fmt.Errorf("некорректный DNS в RAWCONF: %q", parts[1])
+		}
+	}
 	mtuVal, convErr := strconv.Atoi(strings.TrimSpace(parts[2]))
 	if convErr != nil {
 		return "", "", 0, fmt.Errorf("некорректный MTU в RAWCONF: %q", parts[2])
 	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), mtuVal, nil
+	if mtuVal < 68 || mtuVal > 65535 {
+		return "", "", 0, fmt.Errorf("MTU вне диапазона 68..65535 в RAWCONF: %q", parts[2])
+	}
+	return ipVal, dnsVal, mtuVal, nil
 }

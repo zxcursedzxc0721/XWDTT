@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -275,9 +276,13 @@ func (e *SessionError) Unwrap() error { return e.Err }
 //
 //	квота (486/quota)        → QUOTA: лимит аккаунта VK — ждём 30–60 с,
 //	                           банить адрес нельзя (он живой для других хешей)
-//	unreachable/timeout/...  → ADDRESS_DEAD: бан адреса 5 мин, берём следующий
-//	"all retransmissions failed", прочие сетевые сбои → RETRY: повтор через
-//	                                          паузу, бан после 3 неудач подряд
+//	unreachable/no route     → ADDRESS_DEAD: бан адреса 5 мин, берём следующий
+//	timeout/refused/прочие   → RETRY: повтор через паузу, бан после
+//	                           maxAttemptsPerAddress неудач. Один потерянный
+//	                           UDP-пакет при Allocate — обычное дело в
+//	                           интернете; мгновенный глобальный бан адреса
+//	                           по одному таймауту оставлял воркеры без
+//	                           TURN-адресов на sleepWhenAllBanned.
 func classifyAllocateError(err error) SessionErrorType {
 	if err == nil {
 		return ""
@@ -289,13 +294,12 @@ func classifyAllocateError(err error) SessionErrorType {
 		strings.Contains(errLower, "486"):
 		return SessionErrorQuota
 	case strings.Contains(errLower, "unreachable"),
-		strings.Contains(errLower, "timeout"),
-		strings.Contains(errLower, "connection refused"),
 		strings.Contains(errLower, "no route to host"):
 		return SessionErrorAddressDead
 	default:
-		// "all retransmissions failed" и прочие временные сбои: воркер
-		// повторяет (worker_group), адрес банится после maxAttemptsPerAddress.
+		// timeout, connection refused, "all retransmissions failed" и прочие
+		// временные сбои: воркер повторяет (worker_group), адрес банится
+		// после maxAttemptsPerAddress неудач.
 		return SessionErrorRetry
 	}
 }
@@ -874,6 +878,7 @@ func RunSession(
 		}
 	}()
 
+	var sessFailure *SessionError
 	go func() {
 		defer proxyWg.Done()
 		defer sessCancel()
@@ -886,14 +891,32 @@ func RunSession(
 				if sessCtx.Err() != nil {
 					return
 				}
+				// Таймаут чтения — детектор смерти сессии, а не «сбрасываемый
+				// будильник»: раньше здесь был continue с перевзводом дедлайна,
+				// и мёртвая сессия (умер relay, истекла TURN-аллокация) висела
+				// в «подключённом» состоянии вечно — UDP-запись «успешна» даже
+				// на мёртвом сокете, redial не происходил, весь трафик воркера
+				// уходил в чёрную дыру. Теперь сессия завершается с RETRY —
+				// воркер пересоздаст её (с бэкоффом и учётом попыток адреса).
 				if ne, ok := readErr.(net.Error); ok && ne.Timeout() {
-					continue
+					sessFailure = &SessionError{
+						Type:    SessionErrorRetry,
+						Address: turnAddr,
+						Err:     fmt.Errorf("нет входящих данных %v — сессия признана мёртвой", sessionReadTimeout),
+					}
+					log.Printf("[ВОРКЕР #%d] Тишина %v от сервера, пересоздаю сессию", sessionID, sessionReadTimeout)
+					return
 				}
 				log.Printf("[ВОРКЕР #%d] Ошибка Reader: %v", sessionID, readErr)
+				sessFailure = &SessionError{
+					Type:    SessionErrorRetry,
+					Address: turnAddr,
+					Err:     fmt.Errorf("Reader: %w", readErr),
+				}
 				return
 			}
 
-			if n == 1 && pkt[0] == keepaliveByte {
+			if isSessionKeepalive(pkt[:n], deviceID) {
 				putPktBuf(pkt)
 				continue
 			}
@@ -924,6 +947,31 @@ func RunSession(
 	sessionWg.Wait()
 	// pipeA/pipeB закрываются defer'ом в DTLS-ветке (выше); в прямом режиме
 	// их нет — relay закрывается defer relay.Close().
+	if sessFailure != nil {
+		log.Printf("[СЕССИЯ #%d] Завершена: %v", sessionID, sessFailure)
+		return configDelivered, sessFailure
+	}
 	log.Printf("[СЕССИЯ #%d] Завершена", sessionID)
 	return configDelivered, nil
+}
+
+// isSessionKeepalive — кадр keepalive: старый формат (1 байт 0xFF) или новый
+// (0xFF + deviceID(16) + паддинг). Легитимные пакеты после расшифровки
+// начинаются с 0x1x–0x4x (WireGuard) или 0x8x (RTP), с 0xFF не сталкиваются —
+// коллизий нет. Раньше фильтровались только кадры длиной ровно 1 байт, и
+// симметричный ответ сервера (наш формат 25–44 байта) уезжал в ReturnCh как
+// мусорный IP-пакет.
+func isSessionKeepalive(b []byte, deviceID string) bool {
+	if len(b) == 0 || b[0] != keepaliveByte {
+		return false
+	}
+	if len(b) == 1 {
+		return true
+	}
+	if len(b) < 17 {
+		return false
+	}
+	var did [16]byte
+	copy(did[:], deviceID)
+	return bytes.Equal(b[1:17], did[:])
 }

@@ -335,9 +335,51 @@ var (
 	globalLastVkFetchTime time.Time
 )
 
+// vkThrottleHandle — владение глобальным vkRequestMu. Капча решается
+// ПОСЛЕ release() и до reacquire(): раньше глобальный мьютекс держался
+// на всю цепочку получения кредов, включая PoW и ручной WebView (до минуты+),
+// и один зависший WebView останавливал обновление кредов у всех воркеров
+// процесса.
+type vkThrottleHandle struct {
+	mu   sync.Mutex
+	held bool
+}
+
+func (h *vkThrottleHandle) release() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.held {
+		h.held = false
+		vkRequestMu.Unlock()
+	}
+}
+
+func (h *vkThrottleHandle) reacquire() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if !h.held {
+		h.held = true
+		vkRequestMu.Lock()
+	}
+}
+
 func fetchVkCredsSerialized(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+	h, err := acquireVKThrottle(ctx, streamID)
+	if err != nil {
+		return "", "", nil, err
+	}
+	defer h.release()
+
+	return fetchVkCreds(ctx, link, streamID, h)
+}
+
+// acquireVKThrottle берёт глобальный VK-мьютекс и выдерживает минимальный
+// интервал между запросами к VK API. Возвращает handle: release() отдаёт
+// мьютекс на время долгих операций (капча), reacquire() возвращает его
+// перед продолжением HTTP-цепочки.
+func acquireVKThrottle(ctx context.Context, streamID int) (*vkThrottleHandle, error) {
 	vkRequestMu.Lock()
-	defer vkRequestMu.Unlock()
+	h := &vkThrottleHandle{held: true}
 
 	minInterval := 3*time.Second + time.Duration(rand.Intn(3000))*time.Millisecond
 	elapsed := time.Since(globalLastVkFetchTime)
@@ -347,19 +389,17 @@ func fetchVkCredsSerialized(ctx context.Context, link string, streamID int) (str
 		log.Printf("[STREAM %d] [VK Auth] Throttling: waiting %v to prevent rate limit...", streamID, wait.Truncate(time.Millisecond))
 		select {
 		case <-ctx.Done():
-			return "", "", nil, ctx.Err()
+			h.release()
+			return nil, ctx.Err()
 		case <-time.After(wait):
 		}
 	}
 
-	defer func() {
-		globalLastVkFetchTime = time.Now()
-	}()
-
-	return fetchVkCreds(ctx, link, streamID)
+	globalLastVkFetchTime = time.Now()
+	return h, nil
 }
 
-func fetchVkCreds(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+func fetchVkCreds(ctx context.Context, link string, streamID int, throttle *vkThrottleHandle) (string, string, []string, error) {
 	if time.Now().Unix() < globalCaptchaLockout.Load() {
 		return "", "", nil, fmt.Errorf("CAPTCHA_WAIT_REQUIRED: global lockout active")
 	}
@@ -386,7 +426,7 @@ func fetchVkCreds(ctx context.Context, link string, streamID int) (string, strin
 		creds := vkCredentialsList[attempt%len(vkCredentialsList)]
 		log.Printf("[STREAM %d] [VK Auth] Trying credentials: client_id=%s (attempt %d/%d)", streamID, creds.ClientID, attempt+1, vkCredentialAttemptLimit)
 
-		user, pass, addrs, err := getTokenChain(ctx, link, streamID, creds, jar)
+		user, pass, addrs, err := getTokenChain(ctx, link, streamID, creds, jar, throttle)
 
 		if err == nil {
 			log.Printf("[STREAM %d] [VK Auth] Success with client_id=%s", streamID, creds.ClientID)
@@ -422,7 +462,7 @@ func fetchVkCreds(ctx context.Context, link string, streamID int) (string, strin
 	return "", "", nil, fmt.Errorf("all VK credentials failed: %w", lastErr)
 }
 
-func getTokenChain(ctx context.Context, link string, streamID int, creds VKCredentials, jar tlsclient.CookieJar) (string, string, []string, error) {
+func getTokenChain(ctx context.Context, link string, streamID int, creds VKCredentials, jar tlsclient.CookieJar, throttle *vkThrottleHandle) (string, string, []string, error) {
 	profile := getRandomProfile()
 
 	client, err := tlsclient.NewHttpClient(tlsclient.NewNoopLogger(),
@@ -538,7 +578,13 @@ func getTokenChain(ctx context.Context, link string, streamID int, creds VKCrede
 					return "", "", nil, fmt.Errorf("CAPTCHA_WAIT_REQUIRED")
 				}
 
+				// Капча (PoW/WebView) может идти минуты — на это время
+				// отдаём глобальный VK-мьютекс, чтобы другие воркеры могли
+				// получать креды; без него зависший WebView блокировал бы
+				// восстановление всего туннеля.
+				throttle.release()
 				successToken, solveErr := solveCaptchaBySelectedMode(ctx, streamID, attempt+1, captchaErr, client, profile, savedProfile)
+				throttle.reacquire()
 				if solveErr != nil {
 					log.Printf("[STREAM %d] [Captcha] Solve failed: %v", streamID, solveErr)
 					globalCaptchaLockout.Store(time.Now().Add(60 * time.Second).Unix())
@@ -641,7 +687,7 @@ func solveCaptchaBySelectedMode(
 	switch getCaptchaMode() {
 	case "wv":
 		log.Printf("[STREAM %d] [КАПЧА] WBV: режим из настроек Android (attempt %d)", streamID, attempt)
-		return requestWebViewCaptcha(streamID, captchaErr, "selected", captchaSelectedWebViewTimeout)
+		return requestWebViewCaptcha(ctx, streamID, captchaErr, "selected", captchaSelectedWebViewTimeout)
 	case "rjs":
 		log.Printf("[STREAM %d] [КАПЧА] RJS: Go v2 выбран в настройках (attempt %d)", streamID, attempt)
 		token, solveErr := solveVkCaptchaV2Attempts(ctx, captchaErr, client, profile, savedProfile, 2)
@@ -652,7 +698,7 @@ func solveCaptchaBySelectedMode(
 			return "", solveErr
 		}
 		log.Printf("[STREAM %d] [КАПЧА] RJS: ошибка, fallback на WBV Auto: %v", streamID, solveErr)
-		return requestWebViewCaptcha(streamID, captchaErr, "auto", captchaAutoWebViewTimeout)
+		return requestWebViewCaptcha(ctx, streamID, captchaErr, "auto", captchaAutoWebViewTimeout)
 	}
 
 	log.Printf("[STREAM %d] [КАПЧА] AUTO: старт цепочки (captcha attempt %d)", streamID, attempt)
@@ -670,7 +716,7 @@ func solveCaptchaBySelectedMode(
 
 	for wbvAttempt := 1; wbvAttempt <= 2; wbvAttempt++ {
 		log.Printf("[STREAM %d] [КАПЧА] AUTO: WBV Auto попытка %d/2 (timeout %s)", streamID, wbvAttempt, captchaAutoWebViewTimeout)
-		token, solveErr = requestWebViewCaptcha(streamID, captchaErr, "auto", captchaAutoWebViewTimeout)
+		token, solveErr = requestWebViewCaptcha(ctx, streamID, captchaErr, "auto", captchaAutoWebViewTimeout)
 		if solveErr == nil {
 			log.Printf("[STREAM %d] [КАПЧА] AUTO: WBV Auto решил капчу", streamID)
 			return token, nil
@@ -707,7 +753,7 @@ func solveCaptchaBySelectedMode(
 	log.Printf("[STREAM %d] [КАПЧА] AUTO: финальная Go v2 ошибка: %v", streamID, solveErr)
 
 	log.Printf("[STREAM %d] [КАПЧА] AUTO: автоцепочка не прошла, открыт ручной WebView", streamID)
-	token, solveErr = requestWebViewCaptcha(streamID, captchaErr, "manual", captchaManualWebViewTimeout)
+	token, solveErr = requestWebViewCaptcha(ctx, streamID, captchaErr, "manual", captchaManualWebViewTimeout)
 	if solveErr == nil {
 		log.Printf("[STREAM %d] [КАПЧА] AUTO: ручной WebView решил капчу", streamID)
 		return token, nil
@@ -718,7 +764,7 @@ func solveCaptchaBySelectedMode(
 	return "", solveErr
 }
 
-func requestWebViewCaptcha(streamID int, captchaErr *VkCaptchaError, mode string, timeout time.Duration) (string, error) {
+func requestWebViewCaptcha(ctx context.Context, streamID int, captchaErr *VkCaptchaError, mode string, timeout time.Duration) (string, error) {
 	if CaptchaResultChan == nil || captchaErr == nil || captchaErr.RedirectURI == "" || captchaErr.SessionToken == "" {
 		return "", fmt.Errorf("webview captcha data is incomplete")
 	}
@@ -733,7 +779,9 @@ func requestWebViewCaptcha(streamID int, captchaErr *VkCaptchaError, mode string
 	drainCaptchaResult()
 	fmt.Printf("CAPTCHA_SOLVE|%s|%s|%s\n", mode, captchaErr.RedirectURI, captchaErr.SessionToken)
 
-	waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	// Ожидание ответа веб-капчи завязано на ctx остановки Core:
+	// при Core.Stop() ожидание прерывается, а не висит на context.Background().
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	select {

@@ -93,7 +93,7 @@ AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
 `
 	for b.Loop() {
-		backend.UapiConf(wgConf)
+		_, _ = backend.UapiConf(wgConf)
 	}
 }
 
@@ -103,12 +103,12 @@ PersistentKeepalive = 25
 
 func BenchmarkToHex(b *testing.B) {
 	for b.Loop() {
-		backend.ToHex("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=")
+		_, _ = backend.ToHex("yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=")
 	}
 }
 
 func BenchmarkToHex_Invalid(b *testing.B) {
 	for b.Loop() {
-		backend.ToHex("not-base64!!")
+		_, _ = backend.ToHex("not-base64!!")
 	}
 }

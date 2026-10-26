@@ -57,6 +57,7 @@ type WG struct {
 	activeDNS      bool   // интерфейсу назначались DNS-серверы
 	savedMetric    uint32 // метрика интерфейса до нашего вмешательства
 	hadMetric      bool
+	activeIPv6Route bool // ::/0 уведён через туннель (антиутечка IPv6, full)
 
 	// macOS: exclude-маршруты, которые снимет helper по команде "down".
 	activeExcludeRoutes []string
@@ -235,7 +236,8 @@ func (w *WG) applyLinux(conf string, turnIPs []string, policy RoutePolicy, logf 
 		return err
 	}
 	tmp.Close()
-	os.Chmod(tmpName, 0o644)
+	// wgConf содержит приватный ключ — файл конфига только для владельца.
+	os.Chmod(tmpName, 0o600)
 
 	if err := runCmdLinux("ip", "link", "add", wgIface, "type", "wireguard"); err != nil {
 		return fmt.Errorf("ip link add: %w", err)
@@ -382,7 +384,12 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 	w.activeDevice = dev
 
 	logf("Применение WireGuard конфига (uapi)")
-	if err := dev.IpcSetOperation(strings.NewReader(uapiConf(wgConf))); err != nil {
+	uapiStr, uapiErr := uapiConf(wgConf)
+	if uapiErr != nil {
+		w.teardownWindowsLocked()
+		return fmt.Errorf("uapi conf: %w", uapiErr)
+	}
+	if err := dev.IpcSetOperation(strings.NewReader(uapiStr)); err != nil {
 		w.teardownWindowsLocked()
 		return fmt.Errorf("IpcSet: %w", err)
 	}
@@ -473,6 +480,10 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 		}
 	}
 
+	// IPv6-утечка: маршрутизация IPv4-only, глобальный IPv6 провайдера
+	// мимо туннеля не иначе как явным перехватом (full) или предупреждением.
+	w.guardIPv6Leak(plan.HijackDefault, logf)
+
 	// Add routes via the WG interface (в split — только адреса списка).
 	// 0.0.0.0/0 уже добавлен выше как перехват default — не дублируем.
 	tunnelCIDRs := plan.TunnelRoutes
@@ -499,8 +510,14 @@ func (w *WG) teardownWindows() {
 }
 
 func (w *WG) teardownWindowsLocked() {
-	if w.activeDevice == nil && w.activeTun == nil && len(w.activeWinRoute) == 0 && len(w.activeWinExcl) == 0 {
+	if w.activeDevice == nil && w.activeTun == nil && len(w.activeWinRoute) == 0 && len(w.activeWinExcl) == 0 && !w.activeIPv6Route {
 		return
+	}
+
+	// Свой IPv6 ::/0 снимаем первым: он не должен пережить закрытие TUN.
+	if w.activeIPv6Route {
+		unblockIPv6ViaTunnel()
+		w.activeIPv6Route = false
 	}
 
 	// Удаляем ровно свои маршруты: по LUID + префиксу + next hop.
@@ -637,7 +654,7 @@ func extractWintun() error {
 	return nil
 }
 
-func uapiConf(wgConf string) string {
+func uapiConf(wgConf string) (string, error) {
 	var sb strings.Builder
 	inPeer := false
 	for _, line := range strings.Split(wgConf, "\n") {
@@ -665,13 +682,25 @@ func uapiConf(wgConf string) string {
 
 		switch key {
 		case "privatekey":
-			sb.WriteString("private_key=" + toHex(val) + "\n")
+			h, err := toHex(val)
+			if err != nil {
+				return "", fmt.Errorf("PrivateKey: %w", err)
+			}
+			sb.WriteString("private_key=" + h + "\n")
 		case "listenport":
 			sb.WriteString("listen_port=" + val + "\n")
 		case "publickey":
-			sb.WriteString("public_key=" + toHex(val) + "\n")
+			h, err := toHex(val)
+			if err != nil {
+				return "", fmt.Errorf("PublicKey: %w", err)
+			}
+			sb.WriteString("public_key=" + h + "\n")
 		case "presharedkey":
-			sb.WriteString("preshared_key=" + toHex(val) + "\n")
+			h, err := toHex(val)
+			if err != nil {
+				return "", fmt.Errorf("PresharedKey: %w", err)
+			}
+			sb.WriteString("preshared_key=" + h + "\n")
 		case "endpoint":
 			sb.WriteString("endpoint=" + val + "\n")
 		case "allowedips":
@@ -685,15 +714,19 @@ func uapiConf(wgConf string) string {
 		}
 	}
 	sb.WriteString("\n")
-	return sb.String()
+	return sb.String(), nil
 }
 
-func toHex(b64 string) string {
+// toHex конвертирует base64-ключ WireGuard в hex для uapi. Раньше при
+// ошибке декода возвращалась исходная строка и IpcSet молча получал мусор —
+// теперь ошибка пробрасывается наверх, туннель падает сразу и понятно.
+// Значение ключа в ошибку не включается (это секрет).
+func toHex(b64 string) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return b64
+		return "", fmt.Errorf("некорректный base64-ключ: %w", err)
 	}
-	return hex.EncodeToString(raw)
+	return hex.EncodeToString(raw), nil
 }
 
 func runCmdWindows(name string, args ...string) error {
@@ -742,11 +775,11 @@ func DefaultGatewayLinux() string {
 	return defaultGatewayLinux()
 }
 
-func UapiConf(wgConf string) string {
+func UapiConf(wgConf string) (string, error) {
 	return uapiConf(wgConf)
 }
 
-func ToHex(b64 string) string {
+func ToHex(b64 string) (string, error) {
 	return toHex(b64)
 }
 

@@ -164,6 +164,9 @@ func (w *WG) ApplyRaw(rawConf string, turnIPs []string, policy RoutePolicy, logf
 		}
 	}
 
+	// IPv6-утечка: в raw-ветке та же IPv4-only маршрутизация, что и в WG.
+	w.guardIPv6Leak(plan.HijackDefault, logf)
+
 	// Маршруты через интерфейс: full — 0.0.0.0/0, split — адреса списка.
 	tunnelCIDRs := plan.TunnelRoutes
 	if plan.HijackDefault {

@@ -148,16 +148,22 @@ func solveVkCaptchaV2Attempts(
 			continue
 		}
 
+		// Бэкофф растёт с номером попытки (0.5с × attempt, макс 5с)
+		// плюс случайный джиттер. Раньше NewTimer создавался, но не
+		// читался — select ждал time.After: утечка таймера и
+		// константная задержка ~1.5–2.7 c без роста.
 		backoffSteps := attempt
 		if backoffSteps > 10 {
 			backoffSteps = 10
 		}
-		timer := time.NewTimer(time.Duration(backoffSteps) * 500 * time.Millisecond)
+		delay := time.Duration(backoffSteps)*500*time.Millisecond +
+			time.Duration(mathrand.Intn(1200))*time.Millisecond
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return "", ctx.Err()
-		case <-time.After(time.Duration(1500+mathrand.Intn(1200)) * time.Millisecond):
+		case <-timer.C:
 		}
 	}
 	return "", fmt.Errorf("v2 captcha attempts exhausted (%d)", maxAttempts)
