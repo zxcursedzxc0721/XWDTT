@@ -13,20 +13,26 @@ jobs:
     steps:
       # Build и Release стартуют одновременно на один и тот же тег, поэтому
       # сначала дожидаемся успешного прогона Build (vet+test+сборка ~5-10 мин),
-      # и только потом качаем артефакты этого коммита (commit_sha).
+      # и только потом качаем артефакты этого коммита.
+      # Ищем строго прогон ЭТОГО тега (head_branch == ref_name): на один коммит
+      # может быть два Build-прогона (push в main + push тега), и выбор по
+      # head_sha наугад скачал артефакты ещё не завершившегося прогона.
       - name: Wait for Build run to finish
+        id: waitbuild
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Waiting for build.yml run on $GITHUB_SHA ..."
+          echo "Waiting for build.yml run on tag $GITHUB_REF_NAME ..."
           for i in $(seq 1 90); do
             run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$GITHUB_SHA" \
-              --jq '.workflow_runs[0] | if . == null then "" else "\(.status) \(.conclusion)" end' || true)
-            status=$(echo "$run" | cut -d' ' -f1)
-            conclusion=$(echo "$run" | cut -d' ' -f2)
+              --jq ".workflow_runs[] | select(.head_branch == \"$GITHUB_REF_NAME\") | \"\(.id) \(.status) \(.conclusion)\"" | head -1 || true)
+            rid=$(echo "$run" | cut -d' ' -f1)
+            status=$(echo "$run" | cut -d' ' -f2)
+            conclusion=$(echo "$run" | cut -d' ' -f3)
             if [ "$status" = "completed" ]; then
               if [ "$conclusion" = "success" ]; then
-                echo "Build succeeded."
+                echo "Build succeeded (run $rid)."
+                echo "run_id=$rid" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
               echo "Build run finished with conclusion=$conclusion"
@@ -38,13 +44,14 @@ jobs:
           echo "Timed out waiting for build."
           exit 1
 
-      # commit_sha привязывает артефакты к коммиту, на который поставлен
-      # тег — иначе качались бы бинарники с последнего push в main.
+      # run_id привязывает артефакты к конкретному завершённому прогону —
+      # без него dawidd6 выбирал бы прогон по commit_sha наугад (ссылка на
+      # коммит общая для main- и tag-прогонов).
       - name: Download Linux artifact
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
-          commit_sha: ${{ github.sha }}
+          run_id: ${{ steps.waitbuild.outputs.run_id }}
           name: xwdtt-linux-amd64
           path: dist
 
@@ -52,7 +59,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
-          commit_sha: ${{ github.sha }}
+          run_id: ${{ steps.waitbuild.outputs.run_id }}
           name: xwdtt-windows-amd64
           path: dist
 
@@ -60,7 +67,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
-          commit_sha: ${{ github.sha }}
+          run_id: ${{ steps.waitbuild.outputs.run_id }}
           name: xwdtt-macos
           path: dist
 
