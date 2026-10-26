@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-const Version = "1.7.0"
+const Version = "1.7.1"
 
 // App — главный объект приложения (консольная версия, без Wails).
 // События Bridge пробрасываются в onEvent — его задаёт CLI

@@ -146,6 +146,11 @@ func (b *Bridge) Disconnect() {
 	// канала, не должны после Teardown снова поднять туннель (stale-проверка
 	// в forwardEvents сработает и просто осушит канал).
 	b.session++
+	// running/core сбрасываем здесь, а не только в финале forwardEvents:
+	// после инвалидации сессии финал уходит в stale-ветку и флаг не трогает —
+	// без этого следующий connect отбивался «already running».
+	b.running = false
+	b.core = nil
 	b.mu.Unlock()
 
 	// Tear down WireGuard interface immediately — don't wait for core shutdown
