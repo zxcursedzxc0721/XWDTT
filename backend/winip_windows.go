@@ -371,6 +371,31 @@ func bestDefaultRoute(excludeLuid uint64) (ipRoute, error) {
 	return best, nil
 }
 
+// allDefaultRoutes возвращает ВСЕ физические default-маршруты с шлюзом
+// (кроме интерфейса excludeLuid). Multi-homed системы (Ethernet+Wi-Fi)
+// держат несколько 0.0.0.0/0 — kill-switch обязан снять каждый, иначе
+// трафик течёт мимо туннеля через второй аплинк.
+func allDefaultRoutes(excludeLuid uint64) ([]ipRoute, error) {
+	routes, err := listIPv4Routes()
+	if err != nil {
+		return nil, err
+	}
+	var out []ipRoute
+	for _, r := range routes {
+		if r.PrefixLen != 0 || r.Luid == excludeLuid {
+			continue
+		}
+		if len(r.NextHop) == 0 || r.NextHop.Equal(net.IPv4zero) {
+			continue // маршрут по умолчанию без шлюза не даёт выхода в сеть
+		}
+		out = append(out, r)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("в системе нет маршрута по умолчанию с шлюзом")
+	}
+	return out, nil
+}
+
 // routesThroughIface — активные маршруты, привязанные к интерфейсу.
 func routesThroughIface(luid uint64) ([]ipRoute, error) {
 	routes, err := listIPv4Routes()

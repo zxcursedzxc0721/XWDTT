@@ -88,6 +88,13 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 		fmt.Fprintf(os.Stderr, "недопустимый --obfs %q (audio|video)\n", *obfs)
 		return 2
 	}
+	// Ворота video — как в `settings set obfs`: без этого connect -obfs video
+	// обходил предупреждение об обфускации, принятое (или нет) в настройках.
+	settings := app.Store().LoadSettings()
+	if *obfs == "video" && !settings.ObfsAccepted {
+		fmt.Fprintf(os.Stderr, "режим video требует принятия предупреждения об обфускации:\n  xwdtt settings set obfs-accepted on\n")
+		return 2
+	}
 	if *fingerprint != "" && !validFingerprints[*fingerprint] {
 		fmt.Fprintf(os.Stderr, "недопустимый --fingerprint %q (chrome|firefox|safari|android|ios)\n", *fingerprint)
 		return 2
@@ -96,8 +103,6 @@ func startTunnel(app *backend.App, p *printer, args []string) int {
 		fmt.Fprintln(os.Stderr, "--workers не может быть отрицательным")
 		return 2
 	}
-
-	settings := app.Store().LoadSettings()
 
 	var prof *backend.ProfileData
 	var profName string

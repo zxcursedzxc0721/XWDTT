@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-const Version = "1.6.0"
+const Version = "1.7.0"
 
 // App — главный объект приложения (консольная версия, без Wails).
 // События Bridge пробрасываются в onEvent — его задаёт CLI
@@ -123,10 +123,14 @@ func (a *App) GetAutoStart() bool {
 }
 
 func (a *App) SetAutoStart(v bool) error {
+	// Сначала применяем, потом сохраняем: иначе при провале schtasks
+	// настройка расходилась с фактическим состоянием задачи.
+	if err := setAutoStart(v); err != nil {
+		return err
+	}
 	settings := a.store.LoadSettings()
 	settings.AutoStart = v
-	a.store.SaveSettings(settings)
-	return setAutoStart(v)
+	return a.store.SaveSettings(settings)
 }
 
 func (a *App) GetObfsMode() string {

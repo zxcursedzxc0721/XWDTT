@@ -92,7 +92,13 @@ func usage() {
   turn-tcp on|off         TCP-транспорт TURN
   workers N               воркеров (0 = авто: max(9, хеши*9))
   fingerprint ИМЯ         chrome|firefox|safari|android|ios
-  doh РЕЖИМ               DNS: yandex|cloudflare|google|doh-*|doh:URL
+  doh РЕЖИМ               DNS: yandex|cloudflare|google|doh-*|doh:URL|custom:IP[,IP]
+
+Список адресов split-режима:
+  xwdtt ips list
+  xwdtt ips add <ip|cidr|домен>...
+  xwdtt ips import <файл.json>             импорт списка из JSON
+  xwdtt ips rm <ip|cidr|домен>...
 
 Флаги connect:
   -workers N  -obfs audio|video  -fingerprint ИМЯ  -turn-tcp

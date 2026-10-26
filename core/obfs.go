@@ -24,6 +24,13 @@ var aeadCache sync.Map
 const replayWindowSpan = uint64(4096 * 961)
 const replayWindowMaxEntries = 8192
 
+// maxObfsPackets — лимит пакетов на одну сессию обфускации. Nonce = ssrc|seq|ts
+// детерминирован; при count ~2^32 он повторился бы, а переиспользование nonce
+// ChaCha20-Poly1305 с тем же ключом раскрывает keystream. Бессмертная сессия
+// с keepalive'ами живёт неделями, поэтому лимит нужен явно: ошибка рвёт
+// сессию, переподключение даёт новые initSeq/initTs/SSRC.
+const maxObfsPackets = uint64(1) << 31
+
 // rtpHeaderLenLegacy — голый 12-байтовый RTP-заголовок (без extension),
 // минимальная длина валидного кадра для replay window.
 const rtpHeaderLenLegacy = 12
@@ -176,6 +183,10 @@ func obfsWrapPacket(key, payload []byte, cfg *ObfsConfig, state *ObfsState) ([]b
 
 	state.mu.Lock()
 	c := state.count
+	if c >= maxObfsPackets {
+		state.mu.Unlock()
+		return nil, fmt.Errorf("obfs: лимит пакетов сессии исчерпан (%d), требуется переподключение", maxObfsPackets)
+	}
 	state.count++
 	state.mu.Unlock()
 

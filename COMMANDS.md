@@ -7,7 +7,7 @@
 ## Сборка
 
 ```powershell
-cd F:\etc\XWDTT
+cd F:\etc\PWDTT  # путь к локальной копии репозитория
 $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\xwdtt.exe" .
 ```
 
@@ -28,7 +28,7 @@ $env:GOOS="windows"; $env:GOARCH="amd64"; go build -o "$env:TEMP\xwdtt.exe" .
 | Права администратора | `connect` и интерактив запрашивают UAC при старте (после валидации аргументов) — `route`, `netsh`, wintun требуют прав. `ping`/`servers`/`settings`/`route`/`ips` прав не требуют |
 | Процесс-модель | Туннель живёт **в своём процессе** (`connect` или интерактив). `pause`/`resume`/`disconnect` из другого процесса не работают |
 | Ctrl+C | В окне `connect`: 1-й — аккуратное отключение (exit 0), 2-й — принудительно (exit 130) |
-| Конфиги | `~/.config/xwdtt/` — `config.json`, `servers/*.json`, `dnscache.json`, `logs/` |
+| Конфиги | Windows: `%APPDATA%\xwdtt\`, Linux/macOS: `~/.config/xwdtt/` — `config.json`, `servers/*.json`, `dnscache.json`, `logs/` |
 
 **Коды выхода:**
 
@@ -118,7 +118,7 @@ xwdtt ping [флаги] [имя]
 
 ```powershell
 xwdtt.exe ping zxc          # RTT: 318 мс (хеш 1 из 4)
-xwdtt.exe ping -raw         # без профиля, прямой запрос
+xwdtt.exe ping -raw zxc      # профиль, но прямой запрос без TLS (сервер с -listen-direct)
 ```
 
 ---
@@ -147,7 +147,8 @@ xwdtt servers edit <имя> [флаги] [--force]          # правка по�
 | `-password P` | пароль |
 | `-name N` | **переименовать** профиль (цель поверх существующего — только с `--force`) |
 | `-listen L` | listen-адрес |
-| `-turn H` / `-port P` | TURN-хост / порт |
+| `-turn H` / `-port P` | TURN-хост / порт (целое 1..65535) |
+| `-direct-port N` / `-raw-port N` | порт -listen-direct (режим -notls) / порт -listen-raw (режим -raw) |
 | `-turn-tcp` | TCP-транспорт (булев) |
 | `-workers N` | воркеры |
 

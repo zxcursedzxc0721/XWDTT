@@ -295,6 +295,10 @@ func (s *Store) ListProfiles() map[string]ProfileData {
 		if err != nil {
 			continue
 		}
+		// Файлы, сохранённые Windows-редакторами, могут начинаться с BOM —
+		// без среза профиль «исчезает» из списка, хотя LoadProfile его читает
+		// (там BOM срезается), а ListBrokenProfiles показывает его битым.
+		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 		var p ProfileData
 		if err := json.Unmarshal(data, &p); err != nil {
 			continue
@@ -329,9 +333,15 @@ func (s *Store) OpenLogFile() *LogFile {
 		return nil
 	}
 	// Миллисекунды + O_EXCL: два запуска в одну секунду больше не
-	// перезаписывают лог друг друга.
+	// перезаписывают лог друг друга. Коллизию в одну миллисекунду (быстрый
+	// reconnect) разрешаем суффиксом — иначе вся сессия писала в никуда.
 	name := time.Now().Format("2006-01-02_15-04-05.000") + ".log"
-	f, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	path := filepath.Join(dir, name)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	for suffix := 1; err != nil && os.IsExist(err) && suffix <= 100; suffix++ {
+		path = filepath.Join(dir, time.Now().Format("2006-01-02_15-04-05.000")+fmt.Sprintf("-%02d", suffix)+".log")
+		f, err = os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	}
 	if err != nil {
 		return nil
 	}

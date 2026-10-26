@@ -19,7 +19,11 @@ func cmdVersion() int {
 // сверка скачанного файла с SHA256SUMS последнего релиза.
 // args == nil — из интерактивного режима (только проверка).
 func cmdUpdate(args []string) int {
-	if len(args) >= 2 && (args[0] == "--verify" || args[0] == "verify") {
+	if len(args) >= 1 && (args[0] == "--verify" || args[0] == "verify") {
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "использование: xwdtt update --verify <скачанный файл>\n")
+			return 2
+		}
 		return cmdVerifyUpdate(args[1])
 	}
 	info, err := backend.CheckUpdate(backend.Version)

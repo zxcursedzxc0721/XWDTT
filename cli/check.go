@@ -24,8 +24,14 @@ func serversCheck(st *backend.Store, args []string) int {
 	}
 	prof, err := st.LoadProfile(args[0])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "профиль %q не найден.\n", args[0])
-		listProfileNames(st, os.Stderr)
+		// Различаем «не найден» и «повреждён» — как это делает servers rm.
+		if st.ProfileExists(args[0]) {
+			fmt.Fprintf(os.Stderr, "профиль %q повреждён: %v\n", args[0], err)
+			fmt.Fprintf(os.Stderr, "Удалить с резервной копией: xwdtt servers rm %q --force\n", args[0])
+		} else {
+			fmt.Fprintf(os.Stderr, "профиль %q не найден.\n", args[0])
+			listProfileNames(st, os.Stderr)
+		}
 		return 1
 	}
 

@@ -170,5 +170,11 @@ func RequestRawConfig(conn net.Conn, deviceID, password string) (ip, dnsCSV stri
 	if mtuVal < 68 || mtuVal > 65535 {
 		return "", "", 0, fmt.Errorf("MTU вне диапазона 68..65535 в RAWCONF: %q", parts[2])
 	}
+	// Кламп до 1500: приёмные буферы даунлинка рассчитаны на кадры ~1600-2128
+	// байт; серверный MTU 65535 давал молча обрезанные кадры → AEAD auth fail
+	// → тихий дроп всего даунлинка.
+	if mtuVal > 1500 {
+		mtuVal = 1500
+	}
 	return ipVal, dnsVal, mtuVal, nil
 }

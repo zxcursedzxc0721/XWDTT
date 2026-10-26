@@ -169,6 +169,9 @@ func NewDispatcherPendingTUN(ctx context.Context, stats *Stats) *Dispatcher {
 // AttachTUN подключает полученный TUN-fd к уже запущенному диспетчеру и
 // снимает блокировку с readLoop/writeLoop. close(ready) защищён sync.Once:
 // повторный вызов (рестарт raw-режима, гонка) не паникует на двойном close.
+// Запись d.tun строго ДО close(ready): циклы читают его в локальную
+// переменную после < -d.ready — это даёт happens-before и убирает data race
+// без синхронизации в горячем пути.
 func (d *Dispatcher) AttachTUN(t RawTUN) {
 	d.tun = t
 	d.readyOnce.Do(func() { close(d.ready) })
@@ -227,7 +230,9 @@ func (d *Dispatcher) readLoop() {
 		return
 	case <-d.ready:
 	}
-	if d.tun != nil {
+	// Один снапшот после ready: запись в AttachTUN была до close(ready).
+	tun := d.tun
+	if tun != nil {
 		rawDiagf("readLoop: разблокирован, начинаю читать из TUN")
 	}
 
@@ -247,8 +252,8 @@ func (d *Dispatcher) readLoop() {
 
 		var n int
 		var err error
-		if d.tun != nil {
-			n, err = d.tun.Read(pkt)
+		if tun != nil {
+			n, err = tun.Read(pkt)
 		} else {
 			// addr объявлен вне цикла: раньше здесь был `var addr net.Addr`
 			// на каждой итерации + `&addr` в Store — лишняя heap-аллокация
@@ -263,7 +268,7 @@ func (d *Dispatcher) readLoop() {
 			}
 			if atomic.CompareAndSwapUint32(&d.firstReadErr, 0, 1) {
 				src := "localConn"
-				if d.tun != nil {
+				if tun != nil {
 					src = "tunFile"
 				}
 				rawDiagf("readLoop: первая ошибка чтения из %s: %v", src, err)
@@ -273,7 +278,7 @@ func (d *Dispatcher) readLoop() {
 		}
 		pkt = pkt[:n]
 
-		if d.tun == nil && addr != nil {
+		if tun == nil && addr != nil {
 			// Клиентский адрес кладём в atomic.Pointer только при СМЕНЕ —
 			// Store на каждый пакет давал по одной аллокации на чтение.
 			if ua, ok := addr.(*net.UDPAddr); ok {
@@ -289,7 +294,7 @@ func (d *Dispatcher) readLoop() {
 		}
 		d.stats.TotalBytesUp.Add(int64(n))
 
-		if d.tun != nil {
+		if tun != nil {
 			c := atomic.AddUint64(&d.tunReadCount, 1)
 			if c%200 == 0 {
 				rawDiagf("readLoop: прочитано из TUN=%d отправлено=%d дропнуто=%d",
@@ -298,7 +303,7 @@ func (d *Dispatcher) readLoop() {
 		}
 
 		if atomic.CompareAndSwapUint32(&d.firstPktUp, 0, 1) {
-			if d.tun != nil {
+			if tun != nil {
 				log.Printf("[ДИСП] [ДЕБАГ] Получен ПЕРВЫЙ пакет от TUN (%d байт)", n)
 			} else {
 				log.Printf("[ДИСП] [ДЕБАГ] Получен ПЕРВЫЙ пакет от локального WireGuard (%d байт) с адреса %s", n, addr.String())
@@ -402,7 +407,7 @@ func (d *Dispatcher) readLoop() {
 		}
 
 		if sent {
-			if d.tun != nil {
+			if tun != nil {
 				atomic.AddUint64(&d.tunSentCount, 1)
 			}
 		} else {
@@ -411,7 +416,7 @@ func (d *Dispatcher) readLoop() {
 			d.rrCount = 0
 			putPktBuf(pkt)
 			d.stats.DroppedUp.Add(1)
-			if d.tun != nil {
+			if tun != nil {
 				c := atomic.AddUint64(&d.tunDroppedCount, 1)
 				if c == 1 || c%50 == 0 {
 					rawDiagf("readLoop: пакет из TUN ДРОПНУТ — все воркеры перегружены (дропнуто всего=%d)", c)
@@ -430,17 +435,19 @@ func (d *Dispatcher) writeLoop() {
 		return
 	case <-d.ready:
 	}
+	// Один снапшот после ready (см. AttachTUN).
+	tun := d.tun
 
 	for {
 		select {
 		case <-d.ctx.Done():
 			return
 		case pkt := <-d.ReturnCh:
-			if d.tun != nil {
+			if tun != nil {
 				if atomic.CompareAndSwapUint32(&d.firstPktDown, 0, 1) {
 					log.Printf("[ДИСП] [ДЕБАГ] Отправляем ПЕРВЫЙ пакет обратно в TUN (%d байт)", len(pkt))
 				}
-				if _, err := d.tun.Write(pkt); err != nil {
+				if _, err := tun.Write(pkt); err != nil {
 					if d.ctx.Err() != nil {
 						putPktBuf(pkt)
 						return

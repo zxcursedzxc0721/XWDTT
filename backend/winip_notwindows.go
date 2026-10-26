@@ -25,6 +25,7 @@ func listIPv4Routes() ([]ipRoute, error)                { return nil, errWinOnly
 func routeAdd(ipRoute) error                            { return errWinOnly }
 func routeDelete(ipRoute) error                         { return errWinOnly }
 func bestDefaultRoute(uint64) (ipRoute, error)          { return ipRoute{}, errWinOnly }
+func allDefaultRoutes(uint64) ([]ipRoute, error)        { return nil, errWinOnly }
 func routesThroughIface(uint64) ([]ipRoute, error)      { return nil, errWinOnly }
 func filterExistingRoutes(ipIface, []ipRoute) []ipRoute { return nil }
 func ifaceSetDNS(string, []string) error                { return errWinOnly }

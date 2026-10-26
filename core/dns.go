@@ -44,7 +44,11 @@ func goDNSServersForArg(arg string) []string {
 			if part == "" {
 				continue
 			}
-			if !strings.Contains(part, ":") {
+			// IPv6-адрес без порта содержит ':' и без брекетов падал
+			// «missing port in address» → тихий фолбэк на системный DNS.
+			if ip := net.ParseIP(part); ip != nil && ip.To4() == nil {
+				part = "[" + part + "]:53"
+			} else if !strings.Contains(part, ":") {
 				part += ":53"
 			}
 			out = append(out, part)

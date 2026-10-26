@@ -142,7 +142,10 @@ func getRandomProfile() Profile {
 	case "ios":
 		return iosProfiles[rand.Intn(len(iosProfiles))]
 	case "safari":
-		return profileList[4]
+		// Раньше возвращался profileList[4] — это Microsoft Edge (Edg/…).
+		// Настоящего десктопного Safari в profileList нет; ближайший честный
+		// Apple-профиль — iOS Safari (реальный UA и client hints Safari).
+		return iosProfiles[0]
 	case "firefox":
 		return profileList[len(profileList)-1]
 	default:

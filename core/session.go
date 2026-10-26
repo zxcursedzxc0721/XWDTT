@@ -731,6 +731,16 @@ func RunSession(
 			if strings.Contains(errStr, "i/o timeout") {
 				log.Printf("[ВОРКЕР #%d] [ПОДСКАЗКА] сервер не ответил на GETCONF_RAW — туннель НЕ поднят (IP не изменится). Обычный режим работает без флагов; -raw требует, чтобы сервер был запущен с -listen-raw", sessionID)
 			}
+			// Конфиг-фаза провалена: сессию завершаем, а не держим вечно.
+			// Иначе keepalive'ы кормят сессию бесконечно, configRequestInFlight
+			// держится до её смерти, остальные воркеры навсегда отстранены от
+			// запроса конфига — и туннель не поднимается никогда. Retry-ошибка
+			// сбрасывает in-flight флаг и повторяет запрос с бэкоффом.
+			return false, &SessionError{
+				Type:    SessionErrorRetry,
+				Address: turnAddr,
+				Err:     fmt.Errorf("конфиг RAW не получен: %w", confErr),
+			}
 		} else if ip != "" {
 			conf := fmt.Sprintf("RAWCONF:%s|%s|%d", ip, dnsCSV, mtu)
 			select {
@@ -742,7 +752,12 @@ func RunSession(
 				log.Printf("[ВОРКЕР #%d] RAW-конфиг уже был доставлен другим воркером", sessionID)
 			}
 		} else {
-			log.Printf("[ВОРКЕР #%d] Сервер ещё не назначил raw IP, повторим позже", sessionID)
+			log.Printf("[ВОРКЕР #%d] Сервер ещё не назначил raw IP — перезапрашиваем сессию", sessionID)
+			return false, &SessionError{
+				Type:    SessionErrorRetry,
+				Address: turnAddr,
+				Err:     fmt.Errorf("сервер ещё не назначил raw IP"),
+			}
 		}
 	} else if getConfig && configCh != nil {
 		conf, confErr := RequestConfig(activeConn, localPort, deviceID, password)
@@ -759,6 +774,12 @@ func RunSession(
 			if strings.Contains(errStr, "i/o timeout") {
 				log.Printf("[ВОРКЕР #%d] [ПОДСКАЗКА] сервер не ответил на GETCONF — туннель НЕ поднят (IP не изменится). Обычный режим работает без флагов; -notls/-raw требует, чтобы сервер был запущен с -listen-direct/-listen-raw", sessionID)
 			}
+			// Аналогично RAW-ветке: не залипаем в живой сессии без конфига.
+			return false, &SessionError{
+				Type:    SessionErrorRetry,
+				Address: turnAddr,
+				Err:     fmt.Errorf("конфиг WG не получен: %w", confErr),
+			}
 		} else if conf != "" {
 			select {
 			case configCh <- conf:
@@ -769,7 +790,12 @@ func RunSession(
 				log.Printf("[ВОРКЕР #%d] Конфиг уже был доставлен другим воркером", sessionID)
 			}
 		} else {
-			log.Printf("[ВОРКЕР #%d] Сервер ещё не выдал WireGuard-конфиг, повторим позже", sessionID)
+			log.Printf("[ВОРКЕР #%d] Сервер ещё не выдал WireGuard-конфиг — перезапрашиваем сессию", sessionID)
+			return false, &SessionError{
+				Type:    SessionErrorRetry,
+				Address: turnAddr,
+				Err:     fmt.Errorf("сервер ещё не выдал WireGuard-конфиг"),
+			}
 		}
 	} else {
 		if authErr := SendAuth(activeConn, deviceID, password); authErr != nil {

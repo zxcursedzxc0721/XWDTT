@@ -109,7 +109,8 @@ func (b *Bridge) Connect(params ConnectParams) error {
 		return fmt.Errorf("core start: %w", err)
 	}
 
-	go b.forwardEvents(events, sessID)
+	lf := b.logFile // владение лог-файлом у горутины этой сессии
+	go b.forwardEvents(events, sessID, lf)
 	return nil
 }
 
@@ -141,6 +142,10 @@ func (b *Bridge) buildRoutePolicy() RoutePolicy {
 func (b *Bridge) Disconnect() {
 	b.mu.Lock()
 	c := b.core
+	// Инвалидация сессии: события wg_config/raw_config, уже лежащие в буфере
+	// канала, не должны после Teardown снова поднять туннель (stale-проверка
+	// в forwardEvents сработает и просто осушит канал).
+	b.session++
 	b.mu.Unlock()
 
 	// Tear down WireGuard interface immediately — don't wait for core shutdown
@@ -190,12 +195,18 @@ func (b *Bridge) SendCaptchaResult(token string) {
 // (консольная печать со статусом/логами/статистикой).
 // sessID — поколение сессии, на которую запущен этот горутин: если к моменту
 // его завершения уже начата новая сессия (быстрый Disconnect → Connect),
-// устаревший горутин не имеет права трогать состояние Bridge.
-func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
+// устаревший горутин не имеет права трогать состояние Bridge, но свой
+// лог-файл lf закрывает всегда — иначе файл остаётся открытым навсегда.
+func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64, lf *LogFile) {
 	// Конфиг этой сессии уже применён? Чтобы ready-сообщение не врало:
 	// в raw/wg-режиме конфиг часто приходит раньше, чем ядро шлёт ready,
 	// и «жду конфиг от сервера» после «Туннель активен» путает.
 	cfgApplied := false
+	defer func() {
+		if lf != nil {
+			lf.Close()
+		}
+	}()
 	for ev := range events {
 		b.mu.Lock()
 		stale := b.session != sessID
@@ -210,11 +221,9 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 
 		case core.EventLog:
 			// Пишем ВСЁ в файл (включая отфильтрованное для UI)
-			b.mu.Lock()
-			if b.logFile != nil {
-				b.logFile.Write(ev.Level, ev.Message)
+			if lf != nil {
+				lf.Write(ev.Level, ev.Message)
 			}
-			b.mu.Unlock()
 			// В UI — только отфильтрованное
 			if ev.Level != "SKIP" {
 				b.onEvent("log", ev.Level, ev.Message)
@@ -236,11 +245,9 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 				b.onEvent("log", "INFO", "[WG] Применение конфига...")
 				wgLogf := func(msg string) {
 					b.onEvent("log", "INFO", "[WG] "+msg)
-					b.mu.Lock()
-					if b.logFile != nil {
-						b.logFile.Write("INFO", "[WG] "+msg)
+					if lf != nil {
+						lf.Write("INFO", "[WG] "+msg)
 					}
-					b.mu.Unlock()
 				}
 				b.mu.Lock()
 				policy := b.policy
@@ -263,11 +270,9 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 				b.onEvent("log", "INFO", "[RAW] Применение raw-конфига...")
 				wgLogf := func(msg string) {
 					b.onEvent("log", "INFO", "[RAW] "+msg)
-					b.mu.Lock()
-					if b.logFile != nil {
-						b.logFile.Write("INFO", "[RAW] "+msg)
+					if lf != nil {
+						lf.Write("INFO", "[RAW] "+msg)
 					}
-					b.mu.Unlock()
 				}
 				b.mu.Lock()
 				policy := b.policy
@@ -315,10 +320,7 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 	if current {
 		b.running = false
 		b.core = nil
-		if b.logFile != nil {
-			b.logFile.Close()
-			b.logFile = nil
-		}
+		b.logFile = nil // сам файл закрывает defer по lf
 	}
 	b.mu.Unlock()
 
@@ -326,6 +328,12 @@ func (b *Bridge) forwardEvents(events <-chan core.Event, sessID uint64) {
 		log.Printf("[BRIDGE] Завершение устаревшей сессии проигнорировано (актуальна #%d)", curSession)
 		return
 	}
+
+	// Ядро завершилось само (не по Stop): туннель обязан быть снят здесь, а не
+	// только в Disconnect — иначе при фатальной ошибке воркеров остаются
+	// маршруты, kill-switch и занулённый DNS, и машина остаётся без сети.
+	// Teardown идемпотентен: если туннель не поднимался — no-op.
+	wg.Teardown()
 
 	b.onEvent("state_changed", "disconnected")
 	log.Printf("[BRIDGE] Ядро завершилось")

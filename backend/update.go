@@ -76,19 +76,19 @@ func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
 	// Ищем ссылку на скачивание для текущей ОС и ассет SHA256SUMS.
 	// Делаем ДО сравнения версий: verify-режиму нужен SumsURL даже когда
 	// обновлений нет (сверка скачанного файла с последним релизом).
-	var downloadURL, assetName, sumsURL string
+	var downloadURL, assetName, sumsURL, fallbackURL, fallbackName string
 	osName := runtime.GOOS // "linux", "windows" или "darwin"
 	// Возможные синонимы ОС в имени ассета
 	osAliases := []string{osName}
 	if osName == "darwin" {
 		osAliases = append(osAliases, "macos", "mac", "osx")
 	}
-	// Подходящие маркеры архитектуры (darwin собирается universal)
-	archMarkers := []string{runtime.GOARCH}
+	// Подходящие маркеры архитектуры (darwin собирается universal).
+	// Точное совпадение GOARCH всегда приоритетнее фолбэка: иначе на
+	// windows/arm64 первый же ассет с "amd64" в имени принимался за свой.
+	fallbackMarkers := []string{"amd64", "x86_64"}
 	if osName == "darwin" {
-		archMarkers = append(archMarkers, "universal", "arm64", "amd64")
-	} else {
-		archMarkers = append(archMarkers, "amd64", "x86_64")
+		fallbackMarkers = []string{"universal", "arm64", "amd64"}
 	}
 	for _, asset := range release.Assets {
 		if strings.EqualFold(asset.Name, "SHA256SUMS") {
@@ -106,16 +106,23 @@ func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
 		if !osOK {
 			continue
 		}
-		for _, m := range archMarkers {
-			if strings.Contains(name, m) {
-				downloadURL = asset.BrowserDownloadURL
-				assetName = asset.Name
-				break
-			}
-		}
-		if downloadURL != "" {
+		if strings.Contains(name, strings.ToLower(runtime.GOARCH)) {
+			downloadURL = asset.BrowserDownloadURL
+			assetName = asset.Name
 			break
 		}
+		if fallbackURL == "" {
+			for _, m := range fallbackMarkers {
+				if strings.Contains(name, m) {
+					fallbackURL = asset.BrowserDownloadURL
+					fallbackName = asset.Name
+					break
+				}
+			}
+		}
+	}
+	if downloadURL == "" {
+		downloadURL, assetName = fallbackURL, fallbackName
 	}
 
 	// Сравниваем версии: latest > current?

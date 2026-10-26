@@ -33,6 +33,25 @@ jobs:
         working-directory: core
         run: go test ./...
 
+  # Windows-first проект: windows-специфичные тесты (dns_phys, tty, пути store,
+  # admin) должны гоняться на целевой платформе, а не только на ubuntu.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Test (клиент)
+        run: go test ./...
+
+      - name: Test (ядро)
+        working-directory: core
+        run: go test ./...
+
   build-linux-windows:
     runs-on: ubuntu-22.04
     needs: test

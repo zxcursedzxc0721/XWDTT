@@ -75,8 +75,13 @@ func itoa(n int) string {
 }
 
 func ftoa(f float64) string {
-	// простая конвертация без fmt
+	// простая конвертация без fmt; дробная часть всегда две цифры —
+	// иначе 1.05 показывалось как «1.5»
 	intPart := int(f)
 	decPart := int((f - float64(intPart)) * 100)
-	return itoa(intPart) + "." + itoa(decPart)
+	ds := itoa(decPart)
+	if len(ds) < 2 {
+		ds = "0" + ds
+	}
+	return itoa(intPart) + "." + ds
 }

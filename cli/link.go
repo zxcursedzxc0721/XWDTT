@@ -106,6 +106,20 @@ func parseLegacy(raw string) (*WdttLink, bool) {
 	}, true
 }
 
+// validatePortOverride — переопределение порта (TURN/direct/raw): пусто =
+// «не задано», иначе целое 1..65535. Раньше port=abc сохранялся как есть и
+// диагностировался только сетевой ошибкой на connect/ping.
+func validatePortOverride(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("порт должен быть целым 1..65535 (получено %q)", s)
+	}
+	return nil
+}
+
 // upsertFromLink — импорт ссылки идемпотентен: если профиль с тем же адресом
 // и паролем уже есть, он обновляется (хеши/порт/воркеры), иначе создаётся новый
 // с авто-именем как в GUI («Сервер 1», «Name 2», ...).
@@ -114,6 +128,9 @@ func parseLegacy(raw string) (*WdttLink, bool) {
 func upsertFromLink(st *backend.Store, link *WdttLink) (string, bool, error) {
 	if err := validatePeerAddr(link.Host); err != nil {
 		return "", false, err
+	}
+	if err := validatePortOverride(link.Port); err != nil {
+		return "", false, fmt.Errorf("порт TURN из ссылки: %w", err)
 	}
 	profiles := st.ListProfiles()
 	for name, p := range profiles {

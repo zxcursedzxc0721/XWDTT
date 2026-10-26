@@ -295,10 +295,13 @@ func testPaddingRange(t *testing.T, mode string, expectedMaxPad int, trials int)
 
 	t.Logf("%s: min=%d, max=%d, range=%d (expected max pad=%d)", mode, minSize, maxSize, maxSize-minSize, expectedMaxPad)
 
-	if minSize != expectedMinPayload {
-		t.Errorf("%s min size: got %d, want %d", mode, minSize, expectedMinPayload)
+	// Границы, а не точные экстремумы: при конечном числе trials точный
+	// минимум/максимум разброса паддинга 1..N не обязан встретиться —
+	// проверка «min == floor» падала ~3.6% прогонов (200 trials, N=60).
+	if minSize < expectedMinPayload {
+		t.Errorf("%s min size %d below expected floor %d", mode, minSize, expectedMinPayload)
 	}
-	if maxSize > expectedMaxPayload+1 {
+	if maxSize > expectedMaxPayload {
 		t.Errorf("%s max size %d exceeds expected bound %d", mode, maxSize, expectedMaxPayload)
 	}
 }

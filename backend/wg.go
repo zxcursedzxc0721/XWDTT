@@ -146,10 +146,16 @@ func repairHijackedDefaultMetric(ownLuid uint64) (int, error) {
 		}
 		fixed := r
 		fixed.Metric = 0
-		if err := routeDelete(r); err != nil {
+		// Сначала добавляем исправленный маршрут, потом снимаем старый:
+		// обратный порядок при неудаче routeAdd оставлял систему вовсе
+		// без маршрута (в т.ч. default).
+		if err := routeAdd(fixed); err != nil {
 			continue
 		}
-		if err := routeAdd(fixed); err != nil {
+		if err := routeDelete(r); err != nil {
+			// Новый добавлен, старый не снялся — дубликат с худшей метрикой
+			// безвреден, но попробуем убрать добавленный, чтобы не копить.
+			_ = routeDelete(fixed)
 			continue
 		}
 		repaired++
@@ -452,9 +458,15 @@ func (w *WG) applyWindows(conf string, turnIPs []string, policy RoutePolicy, log
 		}
 		w.activeWinRoute = append(w.activeWinRoute, defRoute)
 
-		// Kill-switch: пока туннель жив, прямой default убираем — обрыв
+		// Kill-switch: пока туннель жив, прямые default'ы убираем — обрыв
 		// сессии не должен разливать трафик напрямую с реальным IP.
-		killSwitchRemovePhysDef(def, logf)
+		// Multi-homed: снимаем ВСЕ физические default-маршруты, а не только
+		// лучший — иначе трафик течёт через второй аплинк.
+		physDefs, derr := allDefaultRoutes(iface.Luid)
+		if derr != nil || len(physDefs) == 0 {
+			physDefs = []ipRoute{def}
+		}
+		killSwitchRemovePhysDef(physDefs, logf)
 
 		// DNS из конфига сервера (10.x внутри туннеля). Без этого система
 		// шлёт запросы на DNS провайдера, который ушёл в туннель и
@@ -656,6 +668,11 @@ func extractWintun() error {
 	want := sha256.Sum256(wintunDLLData)
 	if data, err := os.ReadFile(dst); err == nil {
 		if sha256.Sum256(data) == want {
+			// Хеш верный, но ACL могли сузить/расширить извне — приводим
+			// к admin/SYSTEM-only на каждом запуске.
+			if err := restrictWintunACL(dst); err != nil {
+				log.Printf("[WG] wintun.dll: не удалось сузить ACL: %v", err)
+			}
 			return nil
 		}
 		log.Printf("[WG] wintun.dll рядом с exe не совпадает со встроенным — перезаписываю")
@@ -669,6 +686,9 @@ func extractWintun() error {
 	}
 	if sha256.Sum256(data) != want {
 		return fmt.Errorf("wintun.dll повреждён после записи")
+	}
+	if err := restrictWintunACL(dst); err != nil {
+		log.Printf("[WG] wintun.dll: не удалось сузить ACL: %v", err)
 	}
 	return nil
 }

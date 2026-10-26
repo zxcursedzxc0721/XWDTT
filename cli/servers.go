@@ -335,11 +335,22 @@ func parseEditFlags(flagArgs []string, p *backend.ProfileData, name string) (*ba
 	np.Password = *password
 	np.Listen = *listen
 	np.TurnHost = *turn
-	np.TurnPort = *port
+	np.TurnPort = strings.TrimSpace(*port)
 	np.TurnTCP = *turnTCP
 	np.Workers = *workers
 	np.DirectPort = strings.TrimSpace(*directPort)
 	np.RawPort = strings.TrimSpace(*rawPort)
+
+	// Порты-переопределения валидируются при сохранении, а не сетевой
+	// ошибкой на connect: раньше `-port abc` молча сохранялся.
+	for label, val := range map[string]string{
+		"port": np.TurnPort, "direct-port": np.DirectPort, "raw-port": np.RawPort,
+	} {
+		if err := validatePortOverride(val); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", label, err)
+			return nil, "", 2
+		}
+	}
 
 	if strings.TrimSpace(np.PeerAddr) == "" {
 		fmt.Fprintln(os.Stderr, "адрес не может быть пустым")

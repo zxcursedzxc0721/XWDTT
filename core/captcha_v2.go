@@ -599,7 +599,14 @@ func captchaV2StringifyAny(value any) string {
 }
 
 func applyBrowserProfileFhttp(req *fhttp.Request, profile Profile) {
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	// UA из профиля, а не зашитый Chrome/120: с sec-ch-ua профиля (144-146)
+	// зашитый UA расходился в версиях — рассинхрон фингерпринта (UA vs client
+	// hints) — типовой триггер антибота.
+	ua := profile.UserAgent
+	if ua == "" {
+		ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+	}
+	req.Header.Set("User-Agent", ua)
 	req.Header.Set("sec-ch-ua", profile.SecChUa)
 	req.Header.Set("sec-ch-ua-mobile", profile.SecChUaMobile)
 	req.Header.Set("sec-ch-ua-platform", profile.SecChUaPlatform)

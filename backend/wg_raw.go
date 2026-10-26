@@ -131,8 +131,13 @@ func (w *WG) ApplyRaw(rawConf string, turnIPs []string, policy RoutePolicy, logf
 		}
 		w.activeWinRoute = append(w.activeWinRoute, defRoute)
 
-		// Kill-switch: прямой default убран, пока туннель жив (как в WG-ветке).
-		killSwitchRemovePhysDef(def, logf)
+		// Kill-switch: прямые default'ы убраны, пока туннель жив (как в
+		// WG-ветке). Multi-homed: снимаем ВСЕ физические default-маршруты.
+		physDefs, derr := allDefaultRoutes(iface.Luid)
+		if derr != nil || len(physDefs) == 0 {
+			physDefs = []ipRoute{def}
+		}
+		killSwitchRemovePhysDef(physDefs, logf)
 
 		// DNS из RAWCONF назначаем только в full: в туннеле серверный
 		// резолвер доступен, а в split адреса списка через него не идут

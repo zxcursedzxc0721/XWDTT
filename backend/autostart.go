@@ -90,11 +90,18 @@ func setAutoStartWindows(v bool) error {
 	taskName := "XWDTT_AutoStart"
 	
 	if !v {
-		// Remove scheduled task
+		// Remove scheduled task. Отсутствие задачи определяется через
+		// /query (по коду выхода), а не по тексту ошибки: текст зависит от
+		// локали Windows и «не удается найти» срабатывает только на RU/EN.
+		q := exec.Command("schtasks", "/query", "/tn", taskName)
+		hideWindow(q)
+		if err := q.Run(); err != nil {
+			return nil // задачи нет — удалять нечего
+		}
 		cmd := exec.Command("schtasks", "/delete", "/tn", taskName, "/f")
 		hideWindow(cmd)
 		out, err := cmd.CombinedOutput()
-		if err != nil && !strings.Contains(string(out), "не удается найти") && !strings.Contains(strings.ToLower(string(out)), "cannot find") {
+		if err != nil {
 			return fmt.Errorf("schtasks delete: %w — %s", err, strings.TrimSpace(string(out)))
 		}
 		return nil
