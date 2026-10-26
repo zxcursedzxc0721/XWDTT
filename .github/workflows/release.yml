@@ -11,6 +11,33 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # Build и Release стартуют одновременно на один и тот же тег, поэтому
+      # сначала дожидаемся успешного прогона Build (vet+test+сборка ~5-10 мин),
+      # и только потом качаем артефакты этого коммита (commit_sha).
+      - name: Wait for Build run to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Waiting for build.yml run on $GITHUB_SHA ..."
+          for i in $(seq 1 90); do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$GITHUB_SHA" \
+              --jq '.workflow_runs[0] | if . == null then "" else "\(.status) \(.conclusion)" end' || true)
+            status=$(echo "$run" | cut -d' ' -f1)
+            conclusion=$(echo "$run" | cut -d' ' -f2)
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                echo "Build succeeded."
+                exit 0
+              fi
+              echo "Build run finished with conclusion=$conclusion"
+              exit 1
+            fi
+            echo "[$i/90] build status: ${status:-not-started}"
+            sleep 20
+          done
+          echo "Timed out waiting for build."
+          exit 1
+
       # commit_sha привязывает артефакты к коммиту, на который поставлен
       # тег — иначе качались бы бинарники с последнего push в main.
       - name: Download Linux artifact

@@ -11,13 +11,27 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/zxcursedzxc0721/XWDTT/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/zxcursedzxc0721/XWDTT/build.yml?branch=main&style=for-the-badge&label=build" alt="Build"></a>
+  <a href="https://github.com/zxcursedzxc0721/XWDTT/releases/latest"><img src="https://img.shields.io/github/v/release/zxcursedzxc0721/XWDTT?style=for-the-badge&label=release" alt="Release"></a>
   <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go">
-  <img src="https://img.shields.io/badge/Linux-amd64-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
-  <img src="https://img.shields.io/badge/Windows-amd64-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
-  <img src="https://img.shields.io/badge/macOS-Universal-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/github/license/zxcursedzxc0721/XWDTT?style=for-the-badge&label=license&color=blue" alt="License">
+</p>
+
+<p align="center">
+  <a href="https://github.com/zxcursedzxc0721/XWDTT/releases/latest"><b>⬇ Скачать XWDTT</b></a>
 </p>
 
 ---
+
+## Возможности
+
+- 🎭 **Маскировка под звонок** — трафик оборачивается в RTP с ChaCha20-Poly1305, для провайдера это выглядит как зашифрованный медиапоток VK
+- 🚀 **Режимы маршрутизации** — `full` (весь трафик) или `split` (только выбранные IP/домены, до 65536 записей)
+- 🔒 **WireGuard + raw-режим** — драйвер wintun встроен в бинарник; режим `-raw` работает без WireGuard
+- 🛡 **Защита от утечек** — автообход петли TURN-адресов, перехват IPv6 в full-режиме, DNS-over-HTTPS
+- 🌐 **Автопереключение** — при недоступности TURN транспорт пересоздаётся, сессии восстанавливаются
+- 📋 **Импорт ссылок** — `wdtt://` и `qwdtt`-ссылки, интерактивный режим, автостарт
+- 🖥 **Кроссплатформенность** — Windows / Linux / macOS (Intel и Apple Silicon)
 
 ## Как это работает
 
@@ -150,7 +164,7 @@ xwdtt ips add vk.com           # домен — резолвится с кэше
 xwdtt ips rm vk.com
 ```
 
-Ограничения: 100 записей, 400 маршрутов. Домены резолвятся при подключении и кэшируются в `dnscache.json`; недоступный домен при наличии старого кэша использует его.
+Ограничение: до 65536 записей в списке. Домены резолвятся при подключении и кэшируются в `dnscache.json`; недоступный домен при наличии старого кэша использует его.
 
 TURN/VK/DNS-адреса в режиме `full` идут мимо туннеля автоматически — петля исключена.
 
@@ -217,7 +231,7 @@ GOOS=darwin  GOARCH=arm64 go build -o xwdtt-macos-arm64
 
 > `assets/wintun.dll` встраивается в Windows-бинарник автоматически (`//go:embed`).
 
-CI (`.github/workflows/build.yml`) собирает Linux/Windows/macOS артефакты обычным `go build`; `release.yml` публикует их в Releases по тегам `v*`.
+CI (`.github/workflows/build.yml`) собирает Linux/Windows/macOS артефакты обычным `go build`; `release.yml` публикует их в [Releases](https://github.com/zxcursedzxc0721/XWDTT/releases) по тегам `v*` — каждый релиз содержит бинарники трёх платформ и файл `SHA256SUMS` для проверки целостности.
 
 ---
 
