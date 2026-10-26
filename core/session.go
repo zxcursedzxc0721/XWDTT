@@ -780,6 +780,9 @@ func RunSession(
 	stopCfgWait() // конфиг получен/провалился — дедлайн больше не нужен
 
 	emitReady()
+	if ac := getActiveCore(); ac != nil {
+		ac.startLiveness(stats)
+	}
 
 	slot := &WorkerSlot{
 		ID:     sessionID,

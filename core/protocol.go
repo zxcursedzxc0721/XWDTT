@@ -46,7 +46,50 @@ func RequestConfig(conn net.Conn, localPort, deviceID, password string) (string,
 		}
 	}
 
+	// Валидация формата (п.4 анализа): ответ должен выглядеть как
+	// WireGuard-конфиг ([Interface]/[Peer] или key=value с известным ключом).
+	// Мусорный или неизвестный ответ (повреждение, несовместимая версия
+	// протокола) раньше принимался как конфиг и «тихо» становился пустым
+	// uapiConf — туннель поднимался без адреса и падал уже в applyWindows
+	// с менее понятной ошибкой.
+	if !looksLikeWGConfig(resp) {
+		snippet := resp
+		if len(snippet) > 120 {
+			snippet = snippet[:120] + "…"
+		}
+		return "", fmt.Errorf("неожиданный ответ GETCONF (не похож на WireGuard-конфиг): %q", snippet)
+	}
+
 	return resp, nil
+}
+
+// looksLikeWGConfig — похож ли ответ сервера на INI-конфиг WireGuard.
+// Достаточно одной узнаваемой секции или ключа (регистр и пробелы не важны).
+func looksLikeWGConfig(resp string) bool {
+	const interfaceSec, peerSec = "[Interface]", "[Peer]"
+	known := map[string]bool{
+		"address": true, "privatekey": true, "publickey": true,
+		"presharedkey": true, "dns": true, "mtu": true,
+		"allowedips": true, "endpoint": true, "listenport": true,
+		"persistentkeepalive": true,
+	}
+	for _, line := range strings.Split(resp, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if t == interfaceSec || t == peerSec {
+			return true
+		}
+		idx := strings.IndexByte(t, '=')
+		if idx <= 0 {
+			continue
+		}
+		if known[strings.ToLower(strings.TrimSpace(t[:idx]))] {
+			return true
+		}
+	}
+	return false
 }
 
 // SendAuth авторизует рабочую DTLS-сессию, которая не запрашивает WireGuard-конфиг.

@@ -87,6 +87,7 @@ type Core struct {
 	startErr          atomic.Value // *startFailure — ошибка первого Start(), если он провалился
 	once              sync.Once // guard от двойного Stop()
 	readyOnce         sync.Once // "ready" — один раз на сессию, а не на воркера
+	livenessOnce      sync.Once // liveness-проверка — один раз на сессию
 
 	// disp — диспетчер текущего запуска (для raw-режима: backend поднимает
 	// TUN после RAWCONF и передаёт его сюда через AttachTUN).

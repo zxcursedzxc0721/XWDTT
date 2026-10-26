@@ -100,6 +100,36 @@ func TestRequestConfig_DeniedAndNoconf(t *testing.T) {
 	}
 }
 
+// TestRequestConfig_Validation: мусорный ответ вместо конфига даёт понятную
+// ошибку, валидный WireGuard-конфиг проходит (п.4 — валидация формата).
+func TestRequestConfig_Validation(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		resp    string
+		wantErr bool
+	}{
+		{"мусор", "BLABLA", true},
+		{"HTML-страница", "<html><body>502 Bad Gateway</body></html>", true},
+		{"пустой конфиг", "\n\n# comment only\n", true},
+		{"валидный INI", "[Interface]\nAddress = 10.66.0.11/32\nPrivateKey = abc\n[Peer]\nEndpoint = 1.2.3.4:56000\n", false},
+		{"без секций, только ключи", "Address=10.66.0.11/32\nDNS=1.1.1.1\nMTU=1280", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn := pipeWithResponse(t, tc.resp)
+			_, err := RequestConfig(conn, "12345", "dev", "pass")
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "неожиданный ответ GETCONF") {
+					t.Fatalf("ожидали ошибку формата, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("неожиданная ошибка: %v", err)
+			}
+		})
+	}
+}
+
 // TestRequestRawConfig_LongResponse: ответ в 64 КБ не обрезается
 // (раньше буфер был 4096).
 func TestRequestRawConfig_LongResponse(t *testing.T) {

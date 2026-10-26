@@ -231,6 +231,13 @@ func (d *Dispatcher) readLoop() {
 		rawDiagf("readLoop: разблокирован, начинаю читать из TUN")
 	}
 
+	// Адрес клиента (non-TUN режим) и его кэш: раньше `&addr` сохранялся в
+	// atomic.Pointer на КАЖДЫЙ пакет — лишняя heap-аллокация в горячем пути.
+	var (
+		addr      net.Addr
+		cachedUDP *net.UDPAddr // последний сохранённый адрес клиента
+	)
+
 	for {
 		if err := d.ctx.Err(); err != nil {
 			return
@@ -239,11 +246,14 @@ func (d *Dispatcher) readLoop() {
 		pkt := getPktBuf(2048)
 
 		var n int
-		var addr net.Addr
 		var err error
 		if d.tun != nil {
 			n, err = d.tun.Read(pkt)
 		} else {
+			// addr объявлен вне цикла: раньше здесь был `var addr net.Addr`
+			// на каждой итерации + `&addr` в Store — лишняя heap-аллокация
+			// на КАЖДЫЙ пакет. Кэш нужен, чтобы не писать в atomic.Value
+			// без изменений.
 			n, addr, err = d.localConn.ReadFrom(pkt)
 		}
 		if err != nil {
@@ -263,8 +273,19 @@ func (d *Dispatcher) readLoop() {
 		}
 		pkt = pkt[:n]
 
-		if d.tun == nil {
-			d.clientAddr.Store(&addr)
+		if d.tun == nil && addr != nil {
+			// Клиентский адрес кладём в atomic.Pointer только при СМЕНЕ —
+			// Store на каждый пакет давал по одной аллокации на чтение.
+			if ua, ok := addr.(*net.UDPAddr); ok {
+				if cachedUDP == nil || ua.Port != cachedUDP.Port || !ua.IP.Equal(cachedUDP.IP) {
+					box := addr
+					d.clientAddr.Store(&box)
+					cachedUDP = ua
+				}
+			} else {
+				box := addr
+				d.clientAddr.Store(&box)
+			}
 		}
 		d.stats.TotalBytesUp.Add(int64(n))
 
@@ -288,6 +309,7 @@ func (d *Dispatcher) readLoop() {
 		nw := len(d.workers)
 		if nw == 0 {
 			d.mu.Unlock()
+			d.stats.DroppedUp.Add(1)
 			putPktBuf(pkt)
 			continue
 		}
@@ -388,6 +410,7 @@ func (d *Dispatcher) readLoop() {
 			d.rrIndex = (idx + 1) % nw
 			d.rrCount = 0
 			putPktBuf(pkt)
+			d.stats.DroppedUp.Add(1)
 			if d.tun != nil {
 				c := atomic.AddUint64(&d.tunDroppedCount, 1)
 				if c == 1 || c%50 == 0 {
@@ -425,6 +448,11 @@ func (d *Dispatcher) writeLoop() {
 					if atomic.CompareAndSwapUint32(&d.firstWriteErr, 0, 1) {
 						rawDiagf("writeLoop: первая ошибка записи в tunFile: %v", err)
 					}
+					// Пакет не доставлен в TUN — дроп и без прироста байтов
+					// (раньше TotalBytesDown рос даже при ошибке записи).
+					d.stats.DroppedDown.Add(1)
+					putPktBuf(pkt)
+					continue
 				}
 				d.stats.TotalBytesDown.Add(int64(len(pkt)))
 				putPktBuf(pkt)
@@ -433,6 +461,7 @@ func (d *Dispatcher) writeLoop() {
 
 			addrPtr := d.clientAddr.Load()
 			if addrPtr == nil {
+				d.stats.DroppedDown.Add(1)
 				putPktBuf(pkt)
 				continue
 			}
@@ -445,6 +474,9 @@ func (d *Dispatcher) writeLoop() {
 					putPktBuf(pkt)
 					return
 				}
+				d.stats.DroppedDown.Add(1)
+				putPktBuf(pkt)
+				continue
 			}
 			d.stats.TotalBytesDown.Add(int64(len(pkt)))
 			putPktBuf(pkt)
