@@ -11,10 +11,13 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # commit_sha привязывает артефакты к коммиту, на который поставлен
+      # тег — иначе качались бы бинарники с последнего push в main.
       - name: Download Linux artifact
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
+          commit_sha: ${{ github.sha }}
           name: xwdtt-linux-amd64
           path: dist
 
@@ -22,6 +25,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
+          commit_sha: ${{ github.sha }}
           name: xwdtt-windows-amd64
           path: dist
 
@@ -29,11 +33,18 @@ jobs:
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build.yml
+          commit_sha: ${{ github.sha }}
           name: xwdtt-macos
           path: dist
 
       - name: List dist contents
         run: find dist/ -maxdepth 3 -ls
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd dist
+          sha256sum xwdtt-linux-amd64 xwdtt-windows-amd64.exe XWDTT-macos.zip > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -43,8 +54,13 @@ jobs:
             dist/xwdtt-linux-amd64
             dist/xwdtt-windows-amd64.exe
             dist/XWDTT-macos.zip
+            dist/SHA256SUMS
+          # Заголовок версии берётся из тега — раньше было захардкожено
+          # «XWDTT v1.6.0» и выпущенный v1.6.1 назывался v1.6.0.
           body: |
-            ## XWDTT v1.6.0
+            ## XWDTT ${{ github.ref_name }}
+
+            Контрольные суммы — см. SHA256SUMS (sha256sum -c).
 
             **Транспорт и ядро:**
             - TURN TCP транспорт (переключатель UDP/TCP в настройках)
