@@ -196,8 +196,8 @@ func (c *Core) start() error {
 	log.SetFlags(0)
 	log.SetOutput(&logWriter{core: c})
 
-	// Подменяем глобальный CaptchaResultChan на канал из Core
-	CaptchaResultChan = c.CaptchaResultChan
+	// Подменяем глобальный канал капчи на канал из Core (под мьютексом)
+	setCaptchaResultChan(c.CaptchaResultChan)
 
 	// Устанавливаем activeCore для доступа из session/vk_auth
 	setActiveCore(c)
@@ -472,7 +472,14 @@ func (c *Core) SolveCaptcha(token string) {
 // ═══════════════════════════════════════════════════
 
 func (c *Core) emit(ev Event) {
-	defer func() { recover() }() // ловим send on closed channel
+	defer func() {
+		// Раньше recover() молча глотал панику (send on closed channel) —
+		// событие терялось незаметно. Логируем в stderr напрямую: канал
+		// событий мог быть закрыт, писать в него же нельзя.
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "xwdtt: panic в emit(%s): %v\n", ev.Type, r)
+		}
+	}()
 	select {
 	case c.events <- ev:
 	default:
@@ -550,7 +557,7 @@ func normalizeVKAuthMode(mode string) string {
 
 func drainCaptchaResult() {
 	select {
-	case <-CaptchaResultChan:
+	case <-getCaptchaResultChan():
 	default:
 	}
 }
@@ -593,9 +600,26 @@ func getVKAuthMode() string {
 	return "vkcalls"
 }
 
-// CaptchaResultChan — глобальный канал для совместимости с vk_auth.go.
-// При Start() подменяется на канал из Core.
-var CaptchaResultChan = make(chan string, 1)
+// captchaResultChan — глобальный канал капчи для vk_auth.go.
+// При Start() подменяется на канал из Core; подмена и чтения идут под
+// мьютексом — без него гонка «второй Core перехватывает глобал» при
+// живых горутинах воркеров.
+var (
+	captchaResultChanMu sync.RWMutex
+	captchaResultChan   = make(chan string, 1)
+)
+
+func setCaptchaResultChan(ch chan string) {
+	captchaResultChanMu.Lock()
+	captchaResultChan = ch
+	captchaResultChanMu.Unlock()
+}
+
+func getCaptchaResultChan() chan string {
+	captchaResultChanMu.RLock()
+	defer captchaResultChanMu.RUnlock()
+	return captchaResultChan
+}
 
 // ═══════════════════════════════════════════════════
 // LOG WRITER — перенаправляет log.Printf в канал событий с фильтрацией

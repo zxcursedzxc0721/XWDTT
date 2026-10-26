@@ -499,7 +499,11 @@ func RunSession(
 	}
 	defer relay.Close()
 
-	getStreamCache(cacheStreamID).errorCount.Store(0)
+	// НЕ сбрасываем errorCount успехом этой сессии: раньше Store(0) здесь
+	// обнулял счётчик, накопленный ДРУГИМИ воркерами — 3-я AUTH-ошибка
+	// могла никогда не достичь порога и кеш протухших кредов не
+	// инвалидировался. Окно errorWindow в handleAuthError и так
+	// сбрасывает неактивные счётчики.
 
 	log.Printf("[СЕССИЯ #%d] Relay: %s", sessionID, relay.LocalAddr())
 

@@ -221,8 +221,11 @@ func WorkerGroup(
 			defer wg.Done()
 
 			shouldGetConfig := getConfig
-			// Счётчик неудач на текущий адрес
+			// Счётчик неудач на текущий адрес. Учитывается адресом, а не
+			// воркером: после смены адреса счётчик сбрасывается, иначе
+			// неудачи на мёртвом A накапливались бы против здорового B.
 			addressAttempts := 0
+			lastAttemptAddr := ""
 			// Храним текущий ObfsMode для этого воркера (может меняться при WRAP_TIMEOUT)
 			workerObfsMode := tp.ObfsMode
 
@@ -350,6 +353,11 @@ func WorkerGroup(
 						log.Printf("[ВОРКЕР #%d] Режим обфускации изменён на %s", wid, workerObfsMode)
 
 						// Увеличиваем счётчик попыток на этом адресе
+						// (при смене адреса счётчик начинается заново)
+						if sessErr.Address != lastAttemptAddr {
+							lastAttemptAddr = sessErr.Address
+							addressAttempts = 0
+						}
 						addressAttempts++
 
 						// Если слишком много попыток на одном адресе — баним его
@@ -409,6 +417,11 @@ func WorkerGroup(
 						// failed"): НЕ убиваем воркера — повторяем с паузой,
 						// адрес банится только после maxAttemptsPerAddress
 						// неудач подряд (мобильный group.go делает так же).
+						// Счётчик ведётся на АДРЕС: смена адреса обнуляет его.
+						if sessErr.Address != lastAttemptAddr {
+							lastAttemptAddr = sessErr.Address
+							addressAttempts = 0
+						}
 						addressAttempts++
 						if addressAttempts >= maxAttemptsPerAddress {
 							if sessErr.Address != "" {
@@ -452,6 +465,7 @@ func WorkerGroup(
 
 				// Успех — сбрасываем счётчики
 				addressAttempts = 0
+				lastAttemptAddr = ""
 
 				// После успешной сессии — небольшая пауза перед следующим циклом
 				select {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"os"
+	"sync/atomic"
 )
 
 type Profile struct {
@@ -118,18 +119,24 @@ var iosProfiles = []Profile{
 	},
 }
 
-var activeFingerprint = "chrome"
+// activeFingerprint хранится в atomic.Value — SetActiveFingerprint вызывается
+// при старте Core, а чтения идут из рабочих горутин (data race без синхронизации).
+var activeFingerprint atomic.Value // string
+
+func init() {
+	activeFingerprint.Store("chrome")
+}
 
 func SetActiveFingerprint(fp string) {
-	activeFingerprint = fp
+	activeFingerprint.Store(fp)
 }
 
 func GetActiveFingerprint() string {
-	return activeFingerprint
+	return activeFingerprint.Load().(string)
 }
 
 func getRandomProfile() Profile {
-	switch activeFingerprint {
+	switch GetActiveFingerprint() {
 	case "android":
 		return androidProfiles[rand.Intn(len(androidProfiles))]
 	case "ios":

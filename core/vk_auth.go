@@ -28,8 +28,6 @@ type VKCredentials struct {
 	ClientSecret string
 }
 
-var vkCredentialsList = loadVKCredentials()
-
 func deobf(s string, shift int) string {
 	b := []byte(s)
 	for i := range b {
@@ -143,6 +141,22 @@ var knownVKCredentials = map[string]VKCredentials{
 	"8202606": {ClientID: "8202606", ClientSecret: "lMRsTiMCyPnp5vfoldmn"},
 }
 
+// vkCredentialsList меняется SetActiveClientIds (команда -active-client-ids)
+// и читается рабочими горутинами воркеров — только под мьютексом.
+var (
+	vkCredentialsList = loadVKCredentials()
+	vkCredsMu         sync.RWMutex
+)
+
+// getVKCredentialsSnapshot — копия списка под RLock: срез при замене
+// (vkCredentialsList = newCreds) не мутирует, поэтому копирование
+// на итерацию не обязательно, но защищает от гонки записи/чтения ссылки.
+func getVKCredentialsSnapshot() []VKCredentials {
+	vkCredsMu.RLock()
+	defer vkCredsMu.RUnlock()
+	return vkCredentialsList
+}
+
 func SetActiveClientIds(ids string) {
 	if ids == "" {
 		return
@@ -155,13 +169,15 @@ func SetActiveClientIds(ids string) {
 		}
 	}
 	if len(newCreds) > 0 {
+		vkCredsMu.Lock()
 		vkCredentialsList = newCreds
+		vkCredsMu.Unlock()
 	}
 }
 
 func GetActiveClientIdsString() string {
 	var ids []string
-	for _, cred := range vkCredentialsList {
+	for _, cred := range getVKCredentialsSnapshot() {
 		ids = append(ids, cred.ClientID)
 	}
 	return strings.Join(ids, ", ")
@@ -422,8 +438,13 @@ func fetchVkCreds(ctx context.Context, link string, streamID int, throttle *vkTh
 	var lastErr error
 	jar := tlsclient.NewCookieJar()
 
+	credsList := getVKCredentialsSnapshot()
+	if len(credsList) == 0 {
+		return "", "", nil, fmt.Errorf("список VK-кредов пуст (проверьте -active-client-ids)")
+	}
+
 	for attempt := 0; attempt < vkCredentialAttemptLimit; attempt++ {
-		creds := vkCredentialsList[attempt%len(vkCredentialsList)]
+		creds := credsList[attempt%len(credsList)]
 		log.Printf("[STREAM %d] [VK Auth] Trying credentials: client_id=%s (attempt %d/%d)", streamID, creds.ClientID, attempt+1, vkCredentialAttemptLimit)
 
 		user, pass, addrs, err := getTokenChain(ctx, link, streamID, creds, jar, throttle)
@@ -448,7 +469,7 @@ func fetchVkCreds(ctx context.Context, link string, streamID int, throttle *vkTh
 			log.Printf("[STREAM %d] [VK Auth] Rate limit detected, trying next credentials...", streamID)
 		}
 
-		if attempt%len(vkCredentialsList) == len(vkCredentialsList)-1 && attempt+1 < vkCredentialAttemptLimit {
+		if attempt%len(credsList) == len(credsList)-1 && attempt+1 < vkCredentialAttemptLimit {
 			wait := time.Duration(900+rand.Intn(900)) * time.Millisecond
 			log.Printf("[STREAM %d] [VK Auth] Both VK credentials failed, retrying stable pair after %v...", streamID, wait)
 			select {
@@ -765,7 +786,8 @@ func solveCaptchaBySelectedMode(
 }
 
 func requestWebViewCaptcha(ctx context.Context, streamID int, captchaErr *VkCaptchaError, mode string, timeout time.Duration) (string, error) {
-	if CaptchaResultChan == nil || captchaErr == nil || captchaErr.RedirectURI == "" || captchaErr.SessionToken == "" {
+	ch := getCaptchaResultChan()
+	if ch == nil || captchaErr == nil || captchaErr.RedirectURI == "" || captchaErr.SessionToken == "" {
 		return "", fmt.Errorf("webview captcha data is incomplete")
 	}
 	mode = strings.ToLower(strings.TrimSpace(mode))
@@ -785,7 +807,7 @@ func requestWebViewCaptcha(ctx context.Context, streamID int, captchaErr *VkCapt
 	defer cancel()
 
 	select {
-	case result := <-CaptchaResultChan:
+	case result := <-ch:
 		result = strings.TrimSpace(result)
 		if result == "" {
 			return "", fmt.Errorf("webview captcha returned empty result")
